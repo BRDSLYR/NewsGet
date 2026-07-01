@@ -27,7 +27,7 @@ jobs:
           echo "Fetching edition for: $TODAY"
           python scripts/fetch_hindu.py delhi "output/hindu-delhi-${TODAY}.epub"
           cp "output/hindu-delhi-${TODAY}.epub" output/hindu-delhi-latest.epub
-          sed "s/{{LAST_UPDATED}}/${DISPLAY_DATE}/" scripts/hindu-delhi-index.html > output/index.html
+          sed "s/{{LAST_UPDATED}}/${DISPLAY_DATE}/" scripts/hindu-delhi/index.html > output/index.html
           ls -lh output/
 
       - name: Publish to GitHub Pages (gh-pages branch)
