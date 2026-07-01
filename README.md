@@ -1,2 +1,1 @@
-# newget.github.io
-Testing
+NewsGet
