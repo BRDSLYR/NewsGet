@@ -1,0 +1,38 @@
+name: Fetch The Hindu (Delhi edition)
+
+on:
+  schedule:
+    # 07:00 IST daily = 01:30 UTC
+    - cron: '30 1 * * *'
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  fetch-and-publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Install Python dependencies
+        run: pip install requests beautifulsoup4 "ebooklib==0.18" lxml
+
+      - name: Fetch The Hindu (Delhi edition)
+        run: |
+          mkdir -p output
+          TODAY=$(date +%Y-%m-%d)
+          echo "Fetching edition for: $TODAY"
+          python scripts/fetch_hindu.py delhi "output/hindu-delhi-${TODAY}.epub"
+          cp "output/hindu-delhi-${TODAY}.epub" output/hindu-delhi-latest.epub
+          ls -lh output/
+
+      - name: Publish to GitHub Pages (gh-pages branch)
+        uses: JamesIves/github-pages-deploy-action@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          branch: gh-pages
+          folder: output
+          target-folder: hindu-delhi
+          clean: false
