@@ -62,6 +62,55 @@ def make_xhtml(title, page, teaser, body):
         f'<p class="dateLine">Page {html.escape(page)} — {html.escape(teaser)}</p>'
         '<hr/>'
         f'{body}'
+        '<hr/>'
+        '<p style="text-align:center;font-size:small;">'
+        '<a href="../index.xhtml">&#8592; Back to Index</a>'
+        '</p>'
+        '</body>'
+        '</html>'
+    )
+
+
+def make_index_xhtml(feeds, today_str, chapter_map):
+    """Build a custom index page listing all sections with 2 preview links each."""
+    sections_html = ''
+    for section, articles in feeds.items():
+        previews = ''
+        for article in articles[:2]:
+            fname = chapter_map[article['url']]
+            teaser = article.get('teaser', '').strip()
+            # Trim to two sentences for the preview
+            sentences = re.split(r'(?<=[.!?])\s+', teaser)
+            preview_text = ' '.join(sentences[:2])
+            previews += (
+                f'<li>'
+                f'<a href="{html.escape(fname)}">{html.escape(article["title"])}</a>'
+                + (f'<br/><span style="font-size:small;color:#444;">{html.escape(preview_text)}</span>' if preview_text else '')
+                + f'</li>'
+            )
+        remaining = len(articles) - 2
+        if remaining > 0:
+            previews += f'<li style="color:#888;font-style:italic;">+ {remaining} more articles</li>'
+        sections_html += (
+            f'<h2>{html.escape(section)}</h2>'
+            f'<ul>{previews}</ul>'
+        )
+    return (
+        '<html xmlns="http://www.w3.org/1999/xhtml">'
+        '<head>'
+        f'<title>Index — The Hindu, {html.escape(today_str)}</title>'
+        '<link rel="stylesheet" href="../style/main.css" type="text/css"/>'
+        '<style>'
+        'h2{font-size:1.1em;margin-top:1.2em;border-bottom:1px solid #ccc;padding-bottom:0.2em;}'
+        'ul{list-style:none;padding:0;margin:0.3em 0;}'
+        'li{margin:0.4em 0;}'
+        'li a{text-decoration:none;color:#1a0dab;}'
+        '</style>'
+        '</head>'
+        '<body>'
+        f'<h1>The Hindu — Delhi, {html.escape(today_str)}</h1>'
+        '<hr/>'
+        f'{sections_html}'
         '</body>'
         '</html>'
     )
@@ -218,7 +267,25 @@ def build_epub(feeds, today_str, cover_url, edition='delhi'):
     )
     book.add_item(style)
 
-    spine = ['nav']
+    # First pass: assign filenames to every article so the index can link to them
+    chapter_map = {}
+    chapter_id = 0
+    for section, articles in feeds.items():
+        for article in articles:
+            chapter_id += 1
+            chapter_map[article['url']] = f'ch_{chapter_id:04d}.xhtml'
+
+    # Build and add the custom index page
+    index_page = epub.EpubHtml(
+        title='Index',
+        file_name='index.xhtml',
+        lang='en',
+    )
+    index_page.content = make_index_xhtml(feeds, today_str, chapter_map)
+    index_page.add_item(style)
+    book.add_item(index_page)
+
+    spine = ['nav', index_page]
     toc = []
     chapter_id = 0
 
