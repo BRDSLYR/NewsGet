@@ -76,10 +76,9 @@ def make_index_xhtml(feeds, today_str, chapter_map):
     sections_html = ''
     for section, articles in feeds.items():
         previews = ''
-        for article in articles[:2]:
+        for article in articles:
             fname = chapter_map[article['url']]
             teaser = article.get('teaser', '').strip()
-            # Trim to two sentences for the preview
             sentences = re.split(r'(?<=[.!?])\s+', teaser)
             preview_text = ' '.join(sentences[:2])
             previews += (
@@ -88,9 +87,6 @@ def make_index_xhtml(feeds, today_str, chapter_map):
                 + (f'<br/><span style="font-size:small;color:#444;">{html.escape(preview_text)}</span>' if preview_text else '')
                 + f'</li>'
             )
-        remaining = len(articles) - 2
-        if remaining > 0:
-            previews += f'<li style="color:#888;font-style:italic;">+ {remaining} more articles</li>'
         sections_html += (
             f'<h2>{html.escape(section)}</h2>'
             f'<ul>{previews}</ul>'
@@ -285,7 +281,7 @@ def build_epub(feeds, today_str, cover_url, edition='delhi'):
     index_page.add_item(style)
     book.add_item(index_page)
 
-    spine = ['nav', index_page]
+    spine = [index_page]
     toc = []
     chapter_id = 0
 
