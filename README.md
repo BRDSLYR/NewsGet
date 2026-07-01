@@ -9,7 +9,7 @@ A GitHub Actions pipeline that fetches Indian publications automatically and ser
 | Publication | Frequency | Updated |
 |---|---|---|
 | The Hindu — Delhi Edition | Daily | Every morning at 07:00 IST |
-| Frontline Magazine | Fortnightly | Checked on the 1st and 15th of each month |
+| Frontline Magazine | Fortnightly | Checked on the 1st, 7th, 15th, 21st and 30th of each month |
 
 Both EPUBs replicate the corresponding Calibre recipes — cover image, article images, section structure — without requiring Calibre to be installed anywhere.
 
