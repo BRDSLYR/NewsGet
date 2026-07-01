@@ -1,19 +1,17 @@
 # NewsGet
 
-A GitHub Actions pipeline that fetches Indian newspaper print editions daily and serves them as EPUB files via GitHub Pages — ready to download and read on any device.
+A GitHub Actions pipeline that fetches Indian publications automatically and serves them as EPUB files via GitHub Pages — ready to download and read on any device.
 
 ---
 
-## What it does
+## Publications
 
-Every morning at **07:00 IST**, a GitHub Actions workflow:
+| Publication | Frequency | Updated |
+|---|---|---|
+| The Hindu — Delhi Edition | Daily | Every morning at 07:00 IST |
+| Frontline Magazine | Fortnightly | Checked on the 1st and 15th of each month |
 
-1. Scrapes The Hindu's Delhi print edition from their website
-2. Downloads all article text and images
-3. Packages everything into a clean, structured EPUB
-4. Publishes it to GitHub Pages for download
-
-The EPUB replicates the Calibre `TheHindu` recipe — section structure, cover image, article images, and print page numbers — without requiring Calibre to be installed anywhere.
+Both EPUBs replicate the corresponding Calibre recipes — cover image, article images, section structure — without requiring Calibre to be installed anywhere.
 
 ---
 
@@ -23,16 +21,18 @@ The EPUB replicates the Calibre `TheHindu` recipe — section structure, cover i
 |---|---|
 | Home | `https://BRDSLYR.github.io/NewsGet/` |
 | The Hindu — Delhi | `https://BRDSLYR.github.io/NewsGet/hindu-delhi/` |
-| Latest EPUB (permalink) | `https://BRDSLYR.github.io/NewsGet/hindu-delhi/hindu-delhi-latest.epub` |
+| Frontline Magazine | `https://BRDSLYR.github.io/NewsGet/frontline/` |
+| The Hindu latest (permalink) | `https://BRDSLYR.github.io/NewsGet/hindu-delhi/hindu-delhi-latest.epub` |
+| Frontline latest (permalink) | `https://BRDSLYR.github.io/NewsGet/frontline/frontline-latest.epub` |
 
 ---
 
 ## EPUB structure
 
-Each daily EPUB contains:
+Every EPUB — regardless of publication — contains:
 
-- **Cover** — the front page of that day's print edition
-- **Section Index** — one-tap navigation to any section (Regional, Edit, Business, Foreign, Sports, Science)
+- **Cover** — the issue or edition cover image
+- **Section Index** — one-tap navigation to any section
 - **Article Index** — every article listed with a two-sentence teaser preview, linked directly
 - **Articles** — full text with embedded images; each article has a *Back to Index* link that returns to its exact entry in the Article Index
 
@@ -44,10 +44,13 @@ Each daily EPUB contains:
 .github/
   workflows/
     hindu-delhi.yml         # Daily workflow — runs at 01:30 UTC (07:00 IST)
+    frontline.yml           # Fortnightly workflow — runs at 01:30 UTC on 1st and 15th
 scripts/
-  fetch_hindu.py            # Scraper: fetches articles, embeds images, builds EPUB
-  hindu-delhi-index.html    # Download page template ({{LAST_UPDATED}} stamped by workflow)
-index.html                  # Root GitHub Pages home page (goes on gh-pages branch)
+  fetch_hindu.py            # Scraper for The Hindu Delhi print edition
+  hindu-delhi-index.html    # Download page template for The Hindu
+  fetch_frontline.py        # Scraper for Frontline Magazine
+  frontline-index.html      # Download page template for Frontline
+index.html                  # Root GitHub Pages home page (on gh-pages branch)
 README.md
 ```
 
@@ -55,35 +58,43 @@ README.md
 
 ## How it works
 
-### Workflow (`hindu-delhi.yml`)
+### The Hindu (`hindu-delhi.yml` + `fetch_hindu.py`)
 
-Runs on a daily cron schedule and on manual trigger (`workflow_dispatch`):
+Runs daily at 01:30 UTC:
 
 ```
-Install Python deps → Run fetch_hindu.py → Copy to latest → Stamp date into HTML → Deploy to gh-pages
+Install deps → Run fetch_hindu.py → Copy to latest → Stamp date into HTML → Deploy to gh-pages/hindu-delhi/
 ```
-
-The workflow stamps today's date into the download page using a single `sed` substitution — no JavaScript or external API calls needed.
-
-### Scraper (`fetch_hindu.py`)
 
 - Fetches `https://www.thehindu.com/todays-paper/YYYY-MM-DD/th_delhi/`
 - Extracts the `grouped_articles` JSON embedded in the page's `<script>` tag
-- Downloads each article, stripping navigation/share elements and keeping only `.article-section`
-- Downloads and embeds all article images as local EPUB items (so they display offline)
+- Downloads each article, stripping navigation/share elements, keeping only `.article-section`
+- Downloads and embeds all article images as local EPUB items
 - Downloads and embeds the front-page cover image
-- Builds a fully navigable EPUB with custom section and article indexes
 
-### Download page (`hindu-delhi-index.html`)
+### Frontline (`frontline.yml` + `fetch_frontline.py`)
 
-A static template stored in `scripts/`. Each workflow run stamps the current date into `{{LAST_UPDATED}}` using `sed` before deploying, so the page always shows the date of the available edition and names the downloaded file `The Hindu - Delhi - D Mon YYYY.epub`.
+Runs at 01:30 UTC on the 1st and 15th of each month:
+
+```
+Install deps → Run fetch_frontline.py → Stamp date into HTML → Deploy to gh-pages/frontline/
+```
+
+- Fetches `https://frontline.thehindu.com/current-issue/`
+- Parses the `div.current-issue-in-this-issue` article listing directly from HTML (no embedded JSON)
+- Handles Frontline's lazy-load image pattern: 1×1 spacer PNGs are replaced with the real image from the preceding `<source srcset>` tag, upgraded from `_320` to `_1200` resolution
+- Downloads and embeds the magazine cover
+
+### Download pages
+
+Both download page templates live in `scripts/` on the `main` branch. Each workflow stamps the current date into `{{LAST_UPDATED}}` using a single `sed` substitution before deploying — no JavaScript or external API calls needed. The `download=` attribute on each button uses the same substitution to name the saved file correctly.
 
 ---
 
 ## Reading on iPhone
 
-1. Open `https://BRDSLYR.github.io/NewsGet/hindu-delhi/` in Safari
-2. Tap **Download Today's Edition**
+1. Open the relevant download page in Safari
+2. Tap **Download Today's Edition** / **Download Latest Issue**
 3. Tap **Share → Copy to Books** (or open in any EPUB reader)
 
 ---
@@ -107,23 +118,31 @@ pip install requests beautifulsoup4 "ebooklib==0.18" lxml
 
 ## Running locally
 
+**The Hindu:**
 ```bash
 python scripts/fetch_hindu.py delhi output/hindu-delhi-today.epub
 ```
 
 To fetch a past edition:
-
 ```python
-# Edit fetch_article_list() — pass a target_date argument
 from datetime import date
 feeds, today_str, cover_url = fetch_article_list('delhi', date(2026, 6, 15))
 ```
 
+**Frontline:**
+```bash
+# Current issue
+python scripts/fetch_frontline.py "" output/frontline-latest.epub
+
+# Specific issue (Volume-Issue format)
+python scripts/fetch_frontline.py "41-12" output/frontline-41-12.epub
+```
+
 ---
 
-## Adding more editions
+## Adding more Hindu editions
 
-The scraper supports all Hindu print editions. To add one, duplicate `hindu-delhi.yml` and change the edition name:
+The Hindu scraper supports all print editions. To add one, duplicate `hindu-delhi.yml` and change the edition name:
 
 ```yaml
 python scripts/fetch_hindu.py chennai "output/hindu-chennai-${TODAY}.epub"
@@ -135,6 +154,8 @@ Available editions: `bengaluru`, `chennai`, `coimbatore`, `delhi`, `erode`, `hyd
 
 ## Notes
 
-- The EPUB file size is typically **20–60 MB** depending on the number of images in that day's edition
-- Past editions accumulate on `gh-pages` under `hindu-delhi/` and are not deleted (`clean: false`)
-- The workflow will fail gracefully with a clear error if The Hindu has not published an edition for that date (e.g. public holidays)
+- The Hindu EPUBs are typically **20–60 MB** depending on images in that day's edition
+- Frontline EPUBs are typically **10–30 MB** per issue
+- Past editions accumulate on `gh-pages` and are never deleted (`clean: false`)
+- The Hindu workflow will raise a clear error if no edition is published that day (e.g. public holidays)
+- Frontline's exact publication date varies slightly — if a new issue has not appeared on the 1st or 15th, the previous issue remains available until the next check
