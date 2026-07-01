@@ -128,7 +128,48 @@ def fetch_cover(cover_url):
         return None, None, None
 
 
-def fetch_article_content(url):
+def fetch_and_embed_images(article, book, chapter_id):
+    """Download every image in the article and embed it into the EPUB."""
+    img_counter = 0
+    for img in article.find_all('img'):
+        # Resolve the real src: prefer data-original (lazy-load), then src
+        src = img.get('data-original') or img.get('src') or ''
+        if not src:
+            img.decompose()
+            continue
+        src = absurl(src)
+        # Skip placeholder/spacer images
+        if 'placeholder' in src or 'spacer' in src or src.endswith('.gif'):
+            img.decompose()
+            continue
+        try:
+            resp = requests.get(src, headers=HEADERS, timeout=30)
+            resp.raise_for_status()
+            content_type = resp.headers.get('Content-Type', 'image/jpeg').split(';')[0].strip()
+            if content_type not in ('image/jpeg', 'image/png', 'image/gif', 'image/webp'):
+                content_type = 'image/jpeg'
+            ext = content_type.split('/')[-1].replace('jpeg', 'jpg')
+            img_counter += 1
+            img_filename = f'images/ch{chapter_id:04d}_{img_counter:03d}.{ext}'
+            img_item = epub.EpubItem(
+                uid=f'img-{chapter_id}-{img_counter}',
+                file_name=img_filename,
+                media_type=content_type,
+                content=resp.content,
+            )
+            book.add_item(img_item)
+            # Rewrite src to local embedded path
+            img['src'] = f'../{img_filename}'
+            # Clean up attrs that EPUB readers don't need
+            for attr in ['data-original', 'data-src', 'srcset', 'height', 'width']:
+                if img.has_attr(attr):
+                    del img[attr]
+        except Exception as e:
+            print(f'    Warning: could not embed image {src}: {e}')
+            img.decompose()
+
+
+def fetch_article_content(url, book, chapter_id):
     try:
         resp = requests.get(url, headers=HEADERS, timeout=30)
         resp.raise_for_status()
@@ -144,8 +185,9 @@ def fetch_article_content(url):
 
         for p in article.find_all('p', class_='caption'):
             p.name = 'figcaption'
-        for img in article.find_all('img', attrs={'data-original': True}):
-            img['src'] = img['data-original']
+
+        # Embed all images into the EPUB (replaces the old data-original fix)
+        fetch_and_embed_images(article, book, chapter_id)
 
         return sanitize(article.decode_contents())
 
@@ -155,44 +197,18 @@ def fetch_article_content(url):
 
 def build_epub(feeds, today_str, cover_url, edition='delhi'):
     book = epub.EpubBook()
-    display_date = datetime.strptime(today_str, '%Y-%m-%d').strftime('%-d %b %Y')
     book.set_identifier(f'thehindu-{edition}-{today_str}')
+    display_date = datetime.strptime(today_str, '%Y-%m-%d').strftime('%-d %b %Y')
     book.set_title(f'The Hindu - {edition.title()} - {display_date}')
     book.set_language('en')
     book.add_author('The Hindu')
 
-    # Set cover image — mirrors Calibre's cover = soup.find(attrs={'class':'hindu-ad'})
+    # Set cover image
     if cover_url:
         cover_bytes, media_type, ext = fetch_cover(cover_url)
         if cover_bytes:
             book.set_cover(f'cover.{ext}', cover_bytes)
             print(f'Cover set ({media_type}, {len(cover_bytes)} bytes)')
-            # Also add as a visible first page so all readers display it
-            cover_img_item = book.get_item_with_id('cover-img')
-            if cover_img_item:
-                cover_page = epub.EpubHtml(
-                    title='Cover',
-                    file_name='cover.xhtml',
-                    lang='en',
-                )
-                cover_page.content = (
-                    '<html xmlns="http://www.w3.org/1999/xhtml">'
-                    '<head><title>Cover</title></head>'
-                    '<body style="margin:0;padding:0;text-align:center;">'
-                    f'<img src="cover.{ext}" alt="Cover" '
-                    'style="max-width:100%;max-height:100%;"/>'
-                    '</body></html>'
-                )
-                book.add_item(cover_page)
-                spine = ['nav', cover_page]
-            else:
-                spine = ['nav']
-        else:
-            print('Warning: cover download failed.')
-            spine = ['nav']
-    else:
-        print('Cover image not found on index page.')
-        spine = ['nav']
 
     style = epub.EpubItem(
         uid='main-css',
@@ -202,6 +218,7 @@ def build_epub(feeds, today_str, cover_url, edition='delhi'):
     )
     book.add_item(style)
 
+    spine = ['nav']
     toc = []
     chapter_id = 0
 
@@ -210,7 +227,7 @@ def build_epub(feeds, today_str, cover_url, edition='delhi'):
         for article in articles:
             chapter_id += 1
             print(f'  [{section}] {article["title"]}')
-            body = fetch_article_content(article['url'])
+            body = fetch_article_content(article['url'], book, chapter_id)
 
             ch = epub.EpubHtml(
                 title=article['title'],
