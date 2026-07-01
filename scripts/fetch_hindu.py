@@ -8,7 +8,7 @@ import json
 import re
 import sys
 import html
-from datetime import date
+from datetime import date, datetime
 from collections import defaultdict
 
 import requests
@@ -45,7 +45,6 @@ def sanitize(content):
     """Strip control characters and ensure content is non-empty valid text."""
     if not content:
         return '<p><em>Content not available.</em></p>'
-    # Remove null bytes and ASCII control chars (except tab, newline, CR)
     content = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]', '', content)
     return content or '<p><em>Content not available.</em></p>'
 
@@ -80,6 +79,15 @@ def fetch_article_list(edition='delhi', target_date=None):
     resp.raise_for_status()
     soup = BeautifulSoup(resp.text, 'html.parser')
 
+    # Mirror: cover = soup.find(attrs={'class':'hindu-ad'}); self.cover_url = cover.img['src']
+    cover_url = None
+    cover_el = soup.find(attrs={'class': 'hindu-ad'})
+    if cover_el and cover_el.find('img'):
+        cover_url = absurl(cover_el.find('img')['src'])
+        print(f'Cover image: {cover_url}')
+    else:
+        print('Cover image not found on index page.')
+
     for script in soup.find_all('script'):
         text = script.string or ''
         if 'grouped_articles = {"' not in text:
@@ -99,9 +107,25 @@ def fetch_article_list(edition='delhi', target_date=None):
                 })
         total = sum(len(v) for v in feeds.values())
         print(f'Found {total} articles across {len(feeds)} sections')
-        return dict(feeds), today_str
+        return dict(feeds), today_str, cover_url
 
     raise ValueError('Could not find grouped_articles — The Hindu may not have published today.')
+
+
+def fetch_cover(cover_url):
+    """Download the cover image, return (bytes, media_type) or (None, None)."""
+    try:
+        resp = requests.get(cover_url, headers=HEADERS, timeout=30)
+        resp.raise_for_status()
+        content_type = resp.headers.get('Content-Type', 'image/jpeg').split(';')[0].strip()
+        # Normalise to a supported image media type
+        if content_type not in ('image/jpeg', 'image/png', 'image/gif', 'image/webp'):
+            content_type = 'image/jpeg'
+        ext = content_type.split('/')[-1].replace('jpeg', 'jpg')
+        return resp.content, content_type, ext
+    except Exception as e:
+        print(f'Warning: could not download cover image: {e}')
+        return None, None, None
 
 
 def fetch_article_content(url):
@@ -123,19 +147,52 @@ def fetch_article_content(url):
         for img in article.find_all('img', attrs={'data-original': True}):
             img['src'] = img['data-original']
 
-        # Use BeautifulSoup's own serializer — handles malformed HTML gracefully
         return sanitize(article.decode_contents())
 
     except Exception as e:
         return f'<p><em>Failed to fetch article: {html.escape(str(e))}</em></p>'
 
 
-def build_epub(feeds, today_str, edition='delhi'):
+def build_epub(feeds, today_str, cover_url, edition='delhi'):
     book = epub.EpubBook()
+    display_date = datetime.strptime(today_str, '%Y-%m-%d').strftime('%-d %b %Y')
     book.set_identifier(f'thehindu-{edition}-{today_str}')
-    book.set_title(f'The Hindu ({edition.title()}) — {today_str}')
+    book.set_title(f'The Hindu - {edition.title()} - {display_date}')
     book.set_language('en')
     book.add_author('The Hindu')
+
+    # Set cover image — mirrors Calibre's cover = soup.find(attrs={'class':'hindu-ad'})
+    if cover_url:
+        cover_bytes, media_type, ext = fetch_cover(cover_url)
+        if cover_bytes:
+            book.set_cover(f'cover.{ext}', cover_bytes)
+            print(f'Cover set ({media_type}, {len(cover_bytes)} bytes)')
+            # Also add as a visible first page so all readers display it
+            cover_img_item = book.get_item_with_id('cover-img')
+            if cover_img_item:
+                cover_page = epub.EpubHtml(
+                    title='Cover',
+                    file_name='cover.xhtml',
+                    lang='en',
+                )
+                cover_page.content = (
+                    '<html xmlns="http://www.w3.org/1999/xhtml">'
+                    '<head><title>Cover</title></head>'
+                    '<body style="margin:0;padding:0;text-align:center;">'
+                    f'<img src="cover.{ext}" alt="Cover" '
+                    'style="max-width:100%;max-height:100%;"/>'
+                    '</body></html>'
+                )
+                book.add_item(cover_page)
+                spine = ['nav', cover_page]
+            else:
+                spine = ['nav']
+        else:
+            print('Warning: cover download failed.')
+            spine = ['nav']
+    else:
+        print('Cover image not found on index page.')
+        spine = ['nav']
 
     style = epub.EpubItem(
         uid='main-css',
@@ -145,7 +202,6 @@ def build_epub(feeds, today_str, edition='delhi'):
     )
     book.add_item(style)
 
-    spine = ['nav']
     toc = []
     chapter_id = 0
 
@@ -186,7 +242,7 @@ if __name__ == '__main__':
     output_path = sys.argv[2] if len(sys.argv) > 2 else \
                   f'hindu-{edition}-{date.today()}.epub'
 
-    feeds, today_str = fetch_article_list(edition)
-    book = build_epub(feeds, today_str, edition)
+    feeds, today_str, cover_url = fetch_article_list(edition)
+    book = build_epub(feeds, today_str, cover_url, edition)
     epub.write_epub(output_path, book)
     print(f'\nSaved: {output_path}')
