@@ -3,7 +3,7 @@ name: Fetch The Hindu (Delhi edition)
 on:
   schedule:
     # 09:00 IST daily = 03:30 UTC
-    - cron: '30 3 * * *'
+    - cron: '37 3 * * *'
   workflow_dispatch: {}
 
 permissions:
