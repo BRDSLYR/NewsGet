@@ -623,6 +623,13 @@ def build_html_reader(feeds, today_str, article_bodies, fallback_notice=''):
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1"/>
 <title>The Hindu — Delhi — {html.escape(display_date)}</title>
+<script>
+(function(){{
+  var saved = localStorage.getItem('th-theme');
+  var prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+  if (saved === 'dark' || (!saved && prefersDark)) document.documentElement.classList.add('dark');
+}})();
+</script>
 <style>
 *, *::before, *::after {{ box-sizing: border-box; margin: 0; padding: 0; }}
 
@@ -637,6 +644,16 @@ def build_html_reader(feeds, today_str, article_bodies, fallback_notice=''):
   --font-head:  'Georgia', 'Times New Roman', serif;
   --font-body:  'Georgia', 'Times New Roman', serif;
   --font-ui:    system-ui, -apple-system, sans-serif;
+}}
+
+html.dark {{
+  --ink:        #e8e4dc;
+  --ink-muted:  #a8a49c;
+  --ink-faint:  #6a6660;
+  --paper:      #181816;
+  --paper-warm: #211f1c;
+  --rule:       #38352f;
+  --red:        #e05070;
 }}
 
 html, body {{
@@ -893,6 +910,18 @@ html, body {{
 @keyframes fadeout {{ to {{ opacity: 0; }} }}
 
 /* ── Desktop: wider article reading column ── */
+/* ── Theme toggle ── */
+#theme-toggle {{
+  background: none; border: none;
+  color: var(--paper); cursor: pointer;
+  padding: 6px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  opacity: 0.75; transition: opacity 0.15s;
+  flex-shrink: 0;
+}}
+#theme-toggle:hover {{ opacity: 1; }}
+#theme-toggle svg {{ display: block; }}
+
 @media (min-width: 700px) {{
   #article-pane {{
     left: 0; right: 0;
@@ -921,7 +950,24 @@ html, body {{
     Back
   </button>
   <div class="nameplate">The Hindu</div>
-  <div class="edition-date">Delhi<br/>{html.escape(display_date)}</div>
+  <div style="display:flex;align-items:center;gap:4px;">
+    <button id="theme-toggle" aria-label="Toggle dark mode" onclick="toggleTheme()">
+      <svg id="icon-sun" width="18" height="18" viewBox="0 0 24 24" fill="none"
+           stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+           style="display:none">
+        <circle cx="12" cy="12" r="5"/>
+        <line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/>
+        <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
+        <line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/>
+        <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+      </svg>
+      <svg id="icon-moon" width="18" height="18" viewBox="0 0 24 24" fill="none"
+           stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+      </svg>
+    </button>
+    <div class="edition-date">Delhi<br/>{html.escape(display_date)}</div>
+  </div>
 </header>
 
 <nav id="section-nav"><div class="nav-inner" id="nav-inner"></div></nav>
@@ -954,6 +1000,18 @@ const track = document.getElementById('pages-track');
 const navInner = document.getElementById('nav-inner');
 const pane = document.getElementById('article-pane');
 const backBtn = document.getElementById('back-btn');
+
+function syncThemeIcon() {{
+  const dark = document.documentElement.classList.contains('dark');
+  document.getElementById('icon-sun').style.display  = dark ? 'block' : 'none';
+  document.getElementById('icon-moon').style.display = dark ? 'none'  : 'block';
+}}
+
+function toggleTheme() {{
+  const dark = document.documentElement.classList.toggle('dark');
+  localStorage.setItem('th-theme', dark ? 'dark' : 'light');
+  syncThemeIcon();
+}}
 
 function buildUI() {{
   SECTIONS.forEach((sec, si) => {{
@@ -1095,6 +1153,7 @@ document.addEventListener('keydown', e => {{
 
 buildUI();
 goToSection(0);
+syncThemeIcon();
 </script>
 </body>
 </html>'''
