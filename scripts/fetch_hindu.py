@@ -815,30 +815,36 @@ html, body {{
 
 /* ── Article pane fly animations ── */
 @keyframes fly-to-pip {{
-  0%   {{ opacity: 1; transform: translate(0,0) scale(1); border-radius: 0; }}
-  100% {{ opacity: 0; transform: translate(calc(100vw - 320px), calc(100vh - 230px)) scale(0.16); border-radius: 10px; }}
+  0%   {{ opacity: 1; transform: scale(1); }}
+  100% {{ opacity: 0; transform: translate(calc(50vw - 150px), calc(50vh)) scale(0.18); border-radius: 10px; }}
 }}
 @keyframes fly-from-pip {{
-  0%   {{ opacity: 0; transform: translate(calc(100vw - 320px), calc(100vh - 230px)) scale(0.16); border-radius: 10px; }}
-  100% {{ opacity: 1; transform: translate(0,0) scale(1); border-radius: 0; }}
+  0%   {{ opacity: 0; transform: translate(calc(50vw - 150px), calc(50vh)) scale(0.18); border-radius: 10px; }}
+  100% {{ opacity: 1; transform: scale(1); }}
 }}
 
-/* ── Article pane ── */
+/* ── Article pane — floating card ── */
 #article-pane {{
   position: fixed;
-  top: 52px; left: 0; right: 0; bottom: 0;
+  top: 72px; left: 50%; bottom: 24px;
+  transform: translateX(-50%) scale(0.96);
+  width: min(780px, calc(100vw - 2rem));
   background: var(--paper);
+  border-radius: 12px;
   overflow-y: auto; overflow-x: hidden;
   -webkit-overflow-scrolling: touch;
   opacity: 0;
   pointer-events: none;
-  transform-origin: bottom right;
+  transform-origin: center bottom;
   z-index: 101;
-  padding: 1.5rem 1.1rem 3rem;
-  max-width: 780px;
-  margin: 0 auto;
+  padding: 1.5rem 1.5rem 3rem;
+  transition: opacity 0.28s ease, transform 0.28s cubic-bezier(0.25,0.46,0.45,0.94);
 }}
-#article-pane.open {{ opacity: 1; pointer-events: auto; animation: none; transform: none; }}
+#article-pane.open {{
+  opacity: 1; pointer-events: auto;
+  transform: translateX(-50%) scale(1);
+  animation: none;
+}}
 #article-pane.flying-out {{ pointer-events: none; animation: fly-to-pip 0.75s cubic-bezier(0.4,0,0.2,1) forwards; }}
 #article-pane.flying-in  {{ pointer-events: none; animation: fly-from-pip 0.4s cubic-bezier(0.2,0,0,1) forwards; }}
 #article-pane::-webkit-scrollbar {{ width: 3px; }}
@@ -898,7 +904,7 @@ html, body {{
 /* ── Background blur overlay ── */
 #blur-overlay {{
   position: fixed;
-  top: 52px; left: 0; right: 0; bottom: 0;
+  top: 0; left: 0; right: 0; bottom: 0;
   z-index: 98;
   backdrop-filter: blur(6px) brightness(0.85);
   -webkit-backdrop-filter: blur(6px) brightness(0.85);
@@ -990,9 +996,7 @@ html, body {{
 
 @media (min-width: 700px) {{
   #article-pane {{
-    left: 0; right: 0;
     padding: 2rem 2.5rem 4rem;
-    max-width: 100%;
   }}
   .article-row {{
     grid-template-columns: 1fr;
@@ -1063,7 +1067,7 @@ html, body {{
   </div>
 </div>
 
-<div id="article-pane" aria-label="Article reader">
+<div id="article-pane" aria-label="Article reader" onclick="event.stopPropagation()">
   <div class="art-pane-section" id="pane-section"></div>
   <h1 id="pane-title"></h1>
   <div class="art-pane-meta" id="pane-meta"></div>
