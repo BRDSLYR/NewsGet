@@ -614,20 +614,20 @@ html.dark .theme-btn::after{{transform:translateX(16px);background:var(--ink)}}
 /* ── Article pane ── */
 @keyframes fl-to-pip{{0%{{opacity:1;transform:translateX(-50%) scale(1)}}100%{{opacity:0;transform:translateX(-50%) translate(calc(50vw - 150px),calc(50vh)) scale(0.18);border-radius:10px}}}}
 @keyframes fl-from-pip{{0%{{opacity:0;transform:translateX(-50%) translate(calc(50vw - 150px),calc(50vh)) scale(0.18);border-radius:10px}}100%{{opacity:1;transform:translateX(-50%) scale(1)}}}}
-#art-pane{{position:fixed;top:74px;left:50%;bottom:24px;transform:translateX(-50%) scale(0.96);width:min(680px,calc(100vw - 2rem));background:var(--bg);border-radius:12px;overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch;opacity:0;pointer-events:none;transform-origin:center bottom;z-index:50;transition:opacity 0.28s ease,transform 0.28s cubic-bezier(0.25,0.46,0.45,0.94),background 0.25s}}
+#art-pane{{position:fixed;top:60px;left:50%;bottom:12px;transform:translateX(-50%) scale(0.96);width:min(900px,calc(100vw - 1rem));background:var(--bg);border-radius:12px;overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch;opacity:0;pointer-events:none;transform-origin:center bottom;z-index:50;transition:opacity 0.28s ease,transform 0.28s cubic-bezier(0.25,0.46,0.45,0.94),background 0.25s}}
 #art-pane::-webkit-scrollbar{{width:3px}}
 #art-pane::-webkit-scrollbar-thumb{{background:var(--border)}}#art-pane.open{{opacity:1;pointer-events:auto;animation:none;transform:translateX(-50%) scale(1)}}#art-pane.flying-out{{pointer-events:none;animation:fl-to-pip 0.75s cubic-bezier(0.4,0,0.2,1) forwards}}#art-pane.flying-in{{pointer-events:none;animation:fl-from-pip 0.4s cubic-bezier(0.2,0,0,1) forwards}}
-#pip-card{{position:fixed;bottom:20px;right:20px;width:260px;background:var(--surface);border-radius:10px;border:1px solid var(--border);overflow:hidden;opacity:0;pointer-events:none;transform:scale(0.88) translateY(8px);transform-origin:bottom right;transition:opacity 0.3s ease 0.52s,transform 0.35s cubic-bezier(0.34,1.4,0.64,1) 0.52s;z-index:103;cursor:pointer;box-shadow:0 4px 24px rgba(0,0,0,0.18)}}
+#pip-card{{position:fixed;bottom:14px;right:14px;width:200px;background:var(--surface);border-radius:10px;border:1px solid var(--border);overflow:hidden;opacity:0;pointer-events:none;transform:scale(0.88) translateY(8px);transform-origin:bottom right;transition:opacity 0.3s ease 0.52s,transform 0.35s cubic-bezier(0.34,1.4,0.64,1) 0.52s;z-index:103;cursor:pointer;box-shadow:0 4px 24px rgba(0,0,0,0.18)}}
 #pip-card.open{{opacity:1;pointer-events:auto;transform:scale(1) translateY(0)}}
 #pip-card:hover{{border-color:var(--muted)}}
 .pip-hd{{background:var(--ink);padding:7px 10px;display:flex;align-items:center;justify-content:space-between}}
-.pip-lg{{font-family:var(--fh);font-size:0.75rem;font-weight:700;color:var(--teal)}}
+.pip-lg{{font-family:var(--fh);font-size:0.68rem;font-weight:700;color:var(--teal)}}
 .pip-x{{background:none;border:none;color:#888;cursor:pointer;padding:2px;display:flex;align-items:center;border-radius:3px;transition:color 0.15s}}
 .pip-x:hover{{color:var(--ink)}}
-.pip-bd{{padding:10px 12px 12px}}
+.pip-bd{{padding:8px 10px 10px}}
 .pip-sec{{font-family:var(--fu);font-size:0.58rem;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:var(--teal);margin-bottom:4px}}
-.pip-ttl{{font-family:var(--fh);font-size:0.8rem;font-weight:700;line-height:1.3;color:var(--ink);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;margin-bottom:5px}}
-.pip-hint{{font-family:var(--fu);font-size:0.62rem;color:var(--muted)}}
+.pip-ttl{{font-family:var(--fh);font-size:0.72rem;font-weight:700;line-height:1.3;color:var(--ink);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;margin-bottom:4px}}
+.pip-hint{{font-family:var(--fu);font-size:0.58rem;color:var(--muted)}}
 .pane-inner{{max-width:680px;margin:0 auto;padding:1.5rem 1.1rem 3rem}}
 .pane-eyebrow{{font-family:var(--fu);font-size:0.62rem;font-weight:600;text-transform:uppercase;letter-spacing:0.1em;color:var(--teal);margin-bottom:0.5rem;display:flex;align-items:center;gap:0.5rem}}
 .pane-eyebrow::after{{content:'';flex:1;height:1px;background:var(--border)}}
