@@ -37,6 +37,14 @@ CSS = '''
     .italic { font-style: italic; color: #202020; }
 '''
 
+# Month name → number for parsing Frontline's issue label
+_MONTHS = {
+    'january':1,'february':2,'march':3,'april':4,'may':5,'june':6,
+    'july':7,'august':8,'september':9,'october':10,'november':11,'december':12,
+    'jan':1,'feb':2,'mar':3,'apr':4,'jun':6,'jul':7,'aug':8,
+    'sep':9,'oct':10,'nov':11,'dec':12,
+}
+
 
 def absurl(url):
     if url.startswith('/'):
@@ -50,6 +58,34 @@ def sanitize(content):
         return '<p><em>Content not available.</em></p>'
     content = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]', '', content)
     return content or '<p><em>Content not available.</em></p>'
+
+
+def issue_label_to_date_slug(issue_label):
+    """Convert Frontline's issue label to a YYYY-MM-DD slug for the filename.
+
+    Frontline labels look like:
+      "Volume 42, Issue 13 | June 20, 2025"
+      "Volume 41, Issue 1 | January 6, 2024"
+    We parse the date portion after the pipe.  Falls back to today's date
+    in YYYY-MM-DD if parsing fails.
+    """
+    try:
+        # Take the part after the pipe if present, else the whole string
+        date_part = issue_label.split('|')[-1].strip()
+        # Expect "Month D, YYYY" or "Month DD, YYYY"
+        m = re.search(
+            r'([A-Za-z]+)\s+(\d{1,2}),?\s+(\d{4})',
+            date_part
+        )
+        if m:
+            month_name, day, year = m.group(1).lower(), int(m.group(2)), int(m.group(3))
+            month_num = _MONTHS.get(month_name[:3])
+            if month_num:
+                return f'{year}-{month_num:02d}-{day:02d}'
+    except Exception:
+        pass
+    # Fallback
+    return date.today().strftime('%Y-%m-%d')
 
 
 def make_xhtml(title, description, body, chapter_file):
@@ -166,7 +202,6 @@ def fetch_article_list(issue=None):
     resp.raise_for_status()
     soup = BeautifulSoup(resp.text, 'html.parser')
 
-    # Cover image — mirrors: cover.find(class_='sptar-image').img['data-original']
     cover_url = None
     issue_label = issue or date.today().strftime('%-d %b %Y')
 
@@ -177,7 +212,6 @@ def fetch_article_list(issue=None):
             src = cover_img['data-original'].replace('SQUARE_80', 'FREE_615')
             cover_url = absurl(src)
             print(f'Cover image: {cover_url}')
-        # Extract issue label from sub-text (e.g. "Volume 42, Issue 13 | June 20, 2025")
         sub_text = magazine_div.find(class_='sub-text')
         if sub_text:
             issue_label = sub_text.get_text(strip=True)
@@ -188,7 +222,6 @@ def fetch_article_list(issue=None):
     if not cover_url:
         print('Cover image not found on index page.')
 
-    # Article listing — mirrors: mag.findAll('div', attrs={'class':'content'})
     feeds = defaultdict(list)
     listing = soup.find(class_='current-issue-in-this-issue')
     if not listing:
@@ -206,13 +239,11 @@ def fetch_article_list(issue=None):
         if not url or not title:
             continue
 
-        # Section label
         section = 'Articles'
         cat = div.find(class_='label')
         if cat:
             section = cat.get_text(strip=True)
 
-        # Description: author + sub-text (teaser)
         description = ''
         auth = div.find(class_='author')
         sub = div.find(class_='sub-text')
@@ -260,8 +291,6 @@ def fetch_and_embed_images(article, book, chapter_id):
         if not src:
             img.decompose()
             continue
-        # Handle the spacer pattern from the Calibre recipe:
-        # if data-original ends with 1x1_spacer.png, use the preceding <source srcset> instead
         if src.endswith('1x1_spacer.png'):
             source = img.find_previous('source', srcset=True)
             img.decompose()
@@ -300,7 +329,6 @@ def fetch_and_embed_images(article, book, chapter_id):
             print(f'    Warning: could not embed image {src}: {e}')
             img.decompose()
 
-    # Remove any leftover <source> tags (postprocess_html mirror)
     for source in article.find_all('source'):
         source.decompose()
 
@@ -312,15 +340,12 @@ def fetch_article_content(url, book, chapter_id):
         resp.raise_for_status()
         soup = BeautifulSoup(resp.text, 'html.parser')
 
-        # keep_only_tags: div.container.article-section
         article = soup.find('div', class_=lambda c: c and 'article-section' in c.split())
         if not article:
-            # Fallback: any element with class article-section
             article = soup.find(class_='article-section')
         if not article:
             return '<p><em>Content not available.</em></p>'
 
-        # remove_tags mirror
         for cls in [
             'breadcrumb', 'comments-shares', 'share-page', 'article-video',
             'referpara', 'slide-mobile', 'title-patch', 'hide-mobile', 'related-stories'
@@ -328,11 +353,9 @@ def fetch_article_content(url, book, chapter_id):
             for el in article.find_all(class_=cls):
                 el.decompose()
 
-        # preprocess_html mirror: caption → figcaption
         for cap in article.find_all(class_='caption'):
             cap.name = 'figcaption'
 
-        # Embed images (handles spacer pattern internally)
         fetch_and_embed_images(article, book, chapter_id)
 
         return sanitize(article.decode_contents())
@@ -343,14 +366,12 @@ def fetch_article_content(url, book, chapter_id):
 
 def build_epub(feeds, issue_label, cover_url):
     book = epub.EpubBook()
-    # Use a filesystem-safe slug from the issue label for the identifier
     slug = re.sub(r'[^\w-]', '_', issue_label)[:60]
     book.set_identifier(f'frontline-{slug}')
     book.set_title(f'Frontline — {issue_label}')
     book.set_language('en')
     book.add_author('Frontline / The Hindu Group')
 
-    # Cover
     if cover_url:
         cover_bytes, media_type, ext = fetch_cover(cover_url)
         if cover_bytes:
@@ -369,7 +390,6 @@ def build_epub(feeds, issue_label, cover_url):
     )
     book.add_item(style)
 
-    # First pass: assign filenames so indexes can link before articles are fetched
     chapter_map = {}
     chapter_id = 0
     for section, articles in feeds.items():
@@ -377,7 +397,6 @@ def build_epub(feeds, issue_label, cover_url):
             chapter_id += 1
             chapter_map[article['url']] = f'ch_{chapter_id:04d}.xhtml'
 
-    # Page 1 — section index
     section_index_page = epub.EpubHtml(
         title='Sections',
         file_name='section_index.xhtml',
@@ -387,7 +406,6 @@ def build_epub(feeds, issue_label, cover_url):
     section_index_page.add_item(style)
     book.add_item(section_index_page)
 
-    # Page 2 — granular article index
     article_index_page = epub.EpubHtml(
         title='Index',
         file_name='article_index.xhtml',
@@ -434,15 +452,14 @@ def build_epub(feeds, issue_label, cover_url):
 
 
 if __name__ == '__main__':
-    issue      = sys.argv[1] if len(sys.argv) > 1 else None
-    output_path = sys.argv[2] if len(sys.argv) > 2 else None
+    issue = sys.argv[1] if len(sys.argv) > 1 and sys.argv[1] else None
 
     feeds, issue_label, cover_url = fetch_article_list(issue)
 
-    if not output_path:
-        slug = re.sub(r'[^\w-]', '_', issue_label)[:40]
-        output_path = f'frontline-{slug}.epub'
+    # Derive a clean YYYY-MM-DD slug from the issue label (e.g. "June 20, 2025" → "2025-06-20")
+    date_slug = issue_label_to_date_slug(issue_label)
+    dated_path = f'frontline-{date_slug}.epub'
 
     book = build_epub(feeds, issue_label, cover_url)
-    epub.write_epub(output_path, book)
-    print(f'\nSaved: {output_path}')
+    epub.write_epub(dated_path, book)
+    print(f'\nSaved: {dated_path} (issue: {issue_label})')
