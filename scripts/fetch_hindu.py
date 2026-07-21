@@ -438,8 +438,15 @@ def fetch_article_content(url, book, chapter_id):
         return f'<p><em>Failed to fetch article: {html.escape(str(e))}</em></p>'
 
 
-def build_epub(feeds, today_str, cover_url, edition='delhi', fallback_notice=''):
-    book = epub.EpubBook()
+def build_epub(feeds, today_str, cover_url, edition='delhi', fallback_notice='',
+               prefetched_bodies=None, prefetched_book=None):
+    """Build an EpubBook from feeds.
+
+    If prefetched_bodies (url->html) and prefetched_book (EpubBook with
+    images already embedded) are supplied, article content is taken from
+    there instead of re-fetching from the network.
+    """
+    book = prefetched_book if prefetched_book is not None else epub.EpubBook()
     book.set_identifier(f'thehindu-{edition}-{today_str}')
     display_date = datetime.strptime(today_str, '%Y-%m-%d').strftime('%-d %b %Y')
     book.set_title(f'The Hindu - {edition.title()} - {display_date}')
@@ -498,7 +505,13 @@ def build_epub(feeds, today_str, cover_url, edition='delhi', fallback_notice='')
         for article in articles:
             chapter_id += 1
             print(f'  [{section}] {article["title"]}')
-            body = fetch_article_content(article['url'], book, chapter_id)
+            if prefetched_bodies is not None:
+                body = prefetched_bodies.get(
+                    article['url'],
+                    '<p><em>Content not available.</em></p>'
+                )
+            else:
+                body = fetch_article_content(article['url'], book, chapter_id)
 
             ch = epub.EpubHtml(
                 title=article['title'],
@@ -526,6 +539,521 @@ def build_epub(feeds, today_str, cover_url, edition='delhi', fallback_notice='')
     return book
 
 
+def build_html_reader(feeds, today_str, article_bodies, fallback_notice=''):
+    """Build a self-contained single-file HTML newspaper reader.
+
+    Layer 1 — section pages (horizontal swipe): each section is a full-screen
+    "page" styled as a broadsheet column block. Headlines are listed with
+    column rules between them.
+
+    Layer 2 — article view: tapping a headline slides in a clean reading pane
+    from the right. A back arrow returns to the section page.
+
+    All article HTML is embedded as JSON in a <script> tag so the file is
+    fully self-contained (no server, no JS imports).
+
+    Returns the HTML as a string.
+    """
+    display_date = datetime.strptime(today_str, '%Y-%m-%d').strftime('%-d %B %Y')
+
+    # Serialise article data for JS — sanitise titles/teasers for JSON embedding
+    articles_js = []
+    art_idx = 0
+    section_data = []
+    for section, articles in feeds.items():
+        sec_articles = []
+        for art in articles:
+            body_html = article_bodies.get(art['url'], '<p><em>Content not available.</em></p>')
+            # Strip script tags from body for safety
+            body_html = re.sub(r'<script[\s\S]*?</script>', '', body_html, flags=re.IGNORECASE)
+            articles_js.append({
+                'id':      art_idx,
+                'title':   art['title'],
+                'section': section,
+                'page':    art.get('page', ''),
+                'teaser':  art.get('teaser', ''),
+                'body':    body_html,
+            })
+            sec_articles.append(art_idx)
+            art_idx += 1
+        section_data.append({'name': section, 'ids': sec_articles})
+
+    articles_json = json.dumps(articles_js, ensure_ascii=False)
+    sections_json = json.dumps(section_data, ensure_ascii=False)
+
+    notice_html = ''
+    if fallback_notice:
+        notice_html = (
+            f'<div class="fallback-notice">{html.escape(fallback_notice)}</div>'
+        )
+
+    return f'''<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1"/>
+<title>The Hindu — Delhi — {html.escape(display_date)}</title>
+<style>
+*, *::before, *::after {{ box-sizing: border-box; margin: 0; padding: 0; }}
+
+:root {{
+  --ink:        #1a1a18;
+  --ink-muted:  #4a4a45;
+  --ink-faint:  #8a8a82;
+  --paper:      #f8f6f0;
+  --paper-warm: #f0ede4;
+  --rule:       #c8c4b8;
+  --red:        #b00020;
+  --font-head:  'Georgia', 'Times New Roman', serif;
+  --font-body:  'Georgia', 'Times New Roman', serif;
+  --font-ui:    system-ui, -apple-system, sans-serif;
+}}
+
+html, body {{
+  height: 100%; width: 100%; overflow: hidden;
+  background: var(--paper); color: var(--ink);
+  font-family: var(--font-body);
+  -webkit-font-smoothing: antialiased;
+}}
+
+/* ── Masthead ── */
+#masthead {{
+  position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+  background: var(--ink); color: var(--paper);
+  padding: 0 1rem;
+  display: flex; align-items: center; justify-content: space-between;
+  height: 52px;
+  user-select: none;
+}}
+#masthead .nameplate {{
+  font-family: var(--font-head);
+  font-size: 1.3rem; font-weight: 700;
+  letter-spacing: -0.01em;
+  line-height: 1;
+}}
+#masthead .edition-date {{
+  font-family: var(--font-ui);
+  font-size: 0.7rem; color: #aaa;
+  text-align: right; line-height: 1.35;
+}}
+#masthead .back-btn {{
+  display: none; align-items: center; gap: 6px;
+  background: none; border: none; color: var(--paper);
+  font-family: var(--font-ui); font-size: 0.8rem;
+  cursor: pointer; padding: 8px 0; min-width: 60px;
+}}
+#masthead .back-btn svg {{ flex-shrink: 0; }}
+
+/* ── Section nav strip ── */
+#section-nav {{
+  position: fixed; top: 52px; left: 0; right: 0; z-index: 99;
+  background: var(--paper-warm);
+  border-bottom: 2px solid var(--ink);
+  overflow-x: auto; overflow-y: hidden;
+  white-space: nowrap;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+  transition: opacity 0.2s, transform 0.2s;
+}}
+#section-nav::-webkit-scrollbar {{ display: none; }}
+#section-nav .nav-inner {{
+  display: inline-flex; padding: 0 0.5rem;
+}}
+.sec-tab {{
+  display: inline-block;
+  font-family: var(--font-ui); font-size: 0.72rem; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.06em;
+  color: var(--ink-muted);
+  padding: 9px 10px;
+  border-bottom: 3px solid transparent;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+  white-space: nowrap;
+}}
+.sec-tab.active {{
+  color: var(--ink);
+  border-bottom-color: var(--red);
+}}
+
+/* ── Pages viewport ── */
+#pages-viewport {{
+  position: fixed;
+  top: 93px; left: 0; right: 0; bottom: 0;
+  overflow: hidden;
+}}
+#pages-track {{
+  display: flex; height: 100%;
+  transition: transform 0.38s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  will-change: transform;
+}}
+
+/* ── Individual section page ── */
+.section-page {{
+  flex: 0 0 100vw; width: 100vw; height: 100%;
+  overflow-y: auto; overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  padding: 1.2rem 0 2rem;
+}}
+.section-page::-webkit-scrollbar {{ width: 3px; }}
+.section-page::-webkit-scrollbar-thumb {{ background: var(--rule); }}
+
+.sec-header {{
+  padding: 0 1rem 0.6rem;
+  border-bottom: 3px double var(--ink);
+  margin-bottom: 0.1rem;
+}}
+.sec-header h2 {{
+  font-family: var(--font-head);
+  font-size: 1.05rem; font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.08em;
+  color: var(--red);
+}}
+.sec-header .art-count {{
+  font-family: var(--font-ui); font-size: 0.7rem;
+  color: var(--ink-faint); margin-top: 1px;
+}}
+
+.article-row {{
+  display: grid;
+  grid-template-columns: 1fr;
+  border-bottom: 0.5px solid var(--rule);
+  padding: 0.75rem 1rem;
+  cursor: pointer;
+  transition: background 0.12s;
+  gap: 0.25rem;
+}}
+.article-row:active {{ background: var(--paper-warm); }}
+@media (hover: hover) {{
+  .article-row:hover {{ background: var(--paper-warm); }}
+}}
+
+.art-meta {{
+  font-family: var(--font-ui); font-size: 0.65rem;
+  color: var(--ink-faint); letter-spacing: 0.04em;
+  text-transform: uppercase;
+  display: flex; gap: 0.5rem; align-items: center;
+}}
+.art-meta .page-tag {{
+  background: var(--ink); color: var(--paper);
+  padding: 1px 5px; border-radius: 2px;
+  font-size: 0.6rem;
+}}
+.art-headline {{
+  font-family: var(--font-head);
+  font-size: 1.02rem; font-weight: 700;
+  line-height: 1.3; color: var(--ink);
+}}
+.art-teaser {{
+  font-family: var(--font-body); font-size: 0.8rem;
+  color: var(--ink-muted); line-height: 1.45;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}}
+.art-read-cue {{
+  font-family: var(--font-ui); font-size: 0.68rem;
+  color: var(--red); font-weight: 600;
+  letter-spacing: 0.03em;
+  align-self: end;
+  text-align: right;
+}}
+
+/* ── Article pane ── */
+#article-pane {{
+  position: fixed;
+  top: 52px; left: 0; right: 0; bottom: 0;
+  background: var(--paper);
+  overflow-y: auto; overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  transform: translateX(100%);
+  transition: transform 0.32s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  will-change: transform;
+  z-index: 50;
+  padding: 1.5rem 1.1rem 3rem;
+  max-width: 780px;
+  margin: 0 auto;
+}}
+#article-pane::-webkit-scrollbar {{ width: 3px; }}
+#article-pane::-webkit-scrollbar-thumb {{ background: var(--rule); }}
+
+#article-pane .art-pane-section {{
+  font-family: var(--font-ui); font-size: 0.68rem;
+  font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.08em; color: var(--red);
+  margin-bottom: 0.5rem;
+  display: flex; align-items: center; gap: 0.5rem;
+}}
+#article-pane .art-pane-section::after {{
+  content: ''; flex: 1; height: 1px; background: var(--rule);
+}}
+#article-pane h1 {{
+  font-family: var(--font-head);
+  font-size: clamp(1.3rem, 4vw, 1.8rem);
+  font-weight: 700; line-height: 1.25;
+  color: var(--ink); margin-bottom: 0.75rem;
+}}
+#article-pane .art-pane-meta {{
+  font-family: var(--font-ui); font-size: 0.72rem;
+  color: var(--ink-faint); margin-bottom: 1rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid var(--rule);
+  display: flex; gap: 1rem; flex-wrap: wrap;
+}}
+#article-pane .art-pane-body {{
+  font-size: 1rem; line-height: 1.75; color: var(--ink);
+}}
+#article-pane .art-pane-body p {{ margin-bottom: 0.9rem; }}
+#article-pane .art-pane-body h2,
+#article-pane .art-pane-body h3 {{
+  font-family: var(--font-head);
+  font-weight: 700; margin: 1.25rem 0 0.4rem;
+  color: var(--ink);
+}}
+#article-pane .art-pane-body img {{
+  max-width: 100%; height: auto;
+  display: block; margin: 1rem 0;
+}}
+#article-pane .art-pane-body figcaption {{
+  font-size: 0.75rem; color: var(--ink-faint);
+  margin-top: -0.5rem; margin-bottom: 1rem;
+  font-style: italic;
+}}
+#article-pane .art-source-link {{
+  margin-top: 1.5rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--rule);
+  font-family: var(--font-ui); font-size: 0.75rem;
+  color: var(--ink-faint);
+}}
+#article-pane .art-source-link a {{ color: var(--red); }}
+
+/* ── Fallback notice ── */
+.fallback-notice {{
+  font-family: var(--font-ui); font-size: 0.75rem;
+  background: #fff8dc; border: 1px solid #e0c000;
+  color: #555; padding: 0.5rem 1rem;
+  margin: 0.5rem 1rem 0;
+  border-radius: 4px;
+}}
+
+/* ── Swipe hint (first load) ── */
+#swipe-hint {{
+  position: fixed; bottom: 1.2rem; left: 50%;
+  transform: translateX(-50%);
+  background: rgba(26,26,24,0.75); color: #f8f6f0;
+  font-family: var(--font-ui); font-size: 0.72rem;
+  padding: 6px 14px; border-radius: 20px;
+  pointer-events: none;
+  animation: fadeout 3s ease 1.5s forwards;
+  white-space: nowrap; z-index: 200;
+}}
+@keyframes fadeout {{ to {{ opacity: 0; }} }}
+
+/* ── Desktop: wider article reading column ── */
+@media (min-width: 700px) {{
+  #article-pane {{
+    left: 0; right: 0;
+    padding: 2rem 2.5rem 4rem;
+  }}
+  .article-row {{
+    grid-template-columns: 1fr;
+    padding: 0.9rem 1.5rem;
+  }}
+  .sec-header {{ padding: 0 1.5rem 0.7rem; }}
+  .section-page {{ padding: 1.4rem 0 2rem; }}
+  .art-headline {{ font-size: 1.1rem; }}
+  #masthead .nameplate {{ font-size: 1.5rem; }}
+  .fallback-notice {{ margin: 0.5rem 1.5rem 0; }}
+}}
+</style>
+</head>
+<body>
+
+<header id="masthead">
+  <button class="back-btn" id="back-btn" onclick="closeArticle()" aria-label="Back to section">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none"
+         stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+      <polyline points="15 18 9 12 15 6"/>
+    </svg>
+    Back
+  </button>
+  <div class="nameplate">The Hindu</div>
+  <div class="edition-date">Delhi<br/>{html.escape(display_date)}</div>
+</header>
+
+<nav id="section-nav"><div class="nav-inner" id="nav-inner"></div></nav>
+
+{notice_html}
+
+<div id="pages-viewport">
+  <div id="pages-track" id="pages-track"></div>
+</div>
+
+<div id="article-pane" aria-label="Article reader">
+  <div class="art-pane-section" id="pane-section"></div>
+  <h1 id="pane-title"></h1>
+  <div class="art-pane-meta" id="pane-meta"></div>
+  <div class="art-pane-body" id="pane-body"></div>
+  <div class="art-source-link" id="pane-source"></div>
+</div>
+
+<div id="swipe-hint">Swipe left / right to change section</div>
+
+<script>
+const ARTICLES = {articles_json};
+const SECTIONS = {sections_json};
+
+let currentSection = 0;
+let articlePaneOpen = false;
+const track = document.getElementById('pages-track');
+const navInner = document.getElementById('nav-inner');
+const pane = document.getElementById('article-pane');
+const backBtn = document.getElementById('back-btn');
+
+function buildUI() {{
+  SECTIONS.forEach((sec, si) => {{
+    const tab = document.createElement('div');
+    tab.className = 'sec-tab' + (si === 0 ? ' active' : '');
+    tab.textContent = sec.name;
+    tab.onclick = () => goToSection(si);
+    navInner.appendChild(tab);
+
+    const page = document.createElement('div');
+    page.className = 'section-page';
+    page.id = 'page-' + si;
+
+    const header = document.createElement('div');
+    header.className = 'sec-header';
+    header.innerHTML = `<h2>${{sec.name}}</h2><div class="art-count">${{sec.ids.length}} article${{sec.ids.length !== 1 ? 's' : ''}}</div>`;
+    page.appendChild(header);
+
+    sec.ids.forEach(aid => {{
+      const art = ARTICLES[aid];
+      const row = document.createElement('div');
+      row.className = 'article-row';
+      row.setAttribute('role', 'button');
+      row.setAttribute('tabindex', '0');
+      row.setAttribute('aria-label', art.title);
+
+      let metaHtml = '';
+      if (art.page) metaHtml += `<span class="page-tag">P.${{art.page}}</span>`;
+      metaHtml += `<span>${{sec.name}}</span>`;
+
+      row.innerHTML = `
+        <div class="art-meta">${{metaHtml}}</div>
+        <div class="art-headline">${{escHtml(art.title)}}</div>
+        ${{art.teaser ? `<div class="art-teaser">${{escHtml(art.teaser)}}</div>` : ''}}
+        <div class="art-read-cue">Read &rsaquo;</div>
+      `;
+      row.onclick = () => openArticle(aid);
+      row.onkeydown = e => {{ if (e.key === 'Enter' || e.key === ' ') openArticle(aid); }};
+      page.appendChild(row);
+    }});
+
+    track.appendChild(page);
+  }});
+}}
+
+function escHtml(s) {{
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}}
+
+function goToSection(idx) {{
+  if (articlePaneOpen) return;
+  currentSection = idx;
+  track.style.transform = `translateX(${{-idx * 100}}vw)`;
+  document.querySelectorAll('.sec-tab').forEach((t, i) => {{
+    t.classList.toggle('active', i === idx);
+  }});
+  const activeTab = navInner.children[idx];
+  if (activeTab) activeTab.scrollIntoView({{ inline: 'center', behavior: 'smooth', block: 'nearest' }});
+}}
+
+function openArticle(aid) {{
+  const art = ARTICLES[aid];
+  document.getElementById('pane-section').textContent = art.section;
+  document.getElementById('pane-title').textContent = art.title;
+
+  let metaHtml = '';
+  if (art.page) metaHtml += `<span>Page ${{art.page}}</span>`;
+  metaHtml += `<span>${{art.section}}</span>`;
+  document.getElementById('pane-meta').innerHTML = metaHtml;
+
+  document.getElementById('pane-body').innerHTML = art.body ||
+    '<p><em>Content not available.</em></p>';
+
+  const srcEl = document.getElementById('pane-source');
+  srcEl.innerHTML = art.url
+    ? `Read on thehindu.com: <a href="${{escHtml(art.url)}}" target="_blank" rel="noopener">${{escHtml(art.url)}}</a>`
+    : '';
+
+  pane.scrollTop = 0;
+  pane.style.transform = 'translateX(0)';
+  articlePaneOpen = true;
+  backBtn.style.display = 'flex';
+  document.getElementById('section-nav').style.opacity = '0.4';
+  document.getElementById('section-nav').style.pointerEvents = 'none';
+  history.pushState({{ article: aid }}, '');
+}}
+
+function closeArticle() {{
+  pane.style.transform = 'translateX(100%)';
+  articlePaneOpen = false;
+  backBtn.style.display = 'none';
+  document.getElementById('section-nav').style.opacity = '';
+  document.getElementById('section-nav').style.pointerEvents = '';
+}}
+
+window.addEventListener('popstate', () => {{
+  if (articlePaneOpen) closeArticle();
+}});
+
+// Touch swipe on pages viewport
+let touchStartX = 0, touchStartY = 0, swiping = false;
+const viewport = document.getElementById('pages-viewport');
+
+viewport.addEventListener('touchstart', e => {{
+  touchStartX = e.touches[0].clientX;
+  touchStartY = e.touches[0].clientY;
+  swiping = false;
+}}, {{ passive: true }});
+
+viewport.addEventListener('touchmove', e => {{
+  const dx = e.touches[0].clientX - touchStartX;
+  const dy = e.touches[0].clientY - touchStartY;
+  if (!swiping && Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 8) {{
+    swiping = true;
+  }}
+  if (swiping) e.preventDefault();
+}}, {{ passive: false }});
+
+viewport.addEventListener('touchend', e => {{
+  if (!swiping || articlePaneOpen) return;
+  const dx = e.changedTouches[0].clientX - touchStartX;
+  if (Math.abs(dx) > 45) {{
+    const next = currentSection + (dx < 0 ? 1 : -1);
+    if (next >= 0 && next < SECTIONS.length) goToSection(next);
+  }}
+}}, {{ passive: true }});
+
+// Keyboard navigation
+document.addEventListener('keydown', e => {{
+  if (articlePaneOpen) {{
+    if (e.key === 'Escape') closeArticle();
+    return;
+  }}
+  if (e.key === 'ArrowRight' && currentSection < SECTIONS.length - 1) goToSection(currentSection + 1);
+  if (e.key === 'ArrowLeft' && currentSection > 0) goToSection(currentSection - 1);
+}});
+
+buildUI();
+goToSection(0);
+</script>
+</body>
+</html>'''
+
+
 if __name__ == '__main__':
     edition = sys.argv[1] if len(sys.argv) > 1 else 'delhi'
 
@@ -551,14 +1079,35 @@ if __name__ == '__main__':
         )
         print(f'RSS fallback active — notice: {fallback_notice}')
 
-    book = build_epub(feeds, today_str, cover_url, edition, fallback_notice=fallback_notice)
+    # ── Fetch all article bodies once; share between EPUB and HTML reader ──
+    # We build a temporary EpubBook just to pass to fetch_article_content
+    # (it embeds images into the book object). The HTML reader gets plain HTML.
+    print('\nFetching article content...')
+    temp_book = epub.EpubBook()
+    article_bodies = {}   # url -> body HTML (for HTML reader)
+    chapter_id = 0
+    for section, articles in feeds.items():
+        for art in articles:
+            chapter_id += 1
+            body = fetch_article_content(art['url'], temp_book, chapter_id)
+            article_bodies[art['url']] = body
 
-    # If an explicit output path was given, use it as-is. Otherwise, always name
-    # the file after the *actual* edition date fetched (today_str), not the date
-    # the script happened to run on — these can differ if a fallback to an
-    # earlier available edition occurred.
+    # ── Build EPUB ──
+    book = build_epub(feeds, today_str, cover_url, edition,
+                      fallback_notice=fallback_notice,
+                      prefetched_bodies=article_bodies,
+                      prefetched_book=temp_book)
+
     output_path = sys.argv[2] if len(sys.argv) > 2 else \
                   f'hindu-{edition}-{today_str}.epub'
-
     epub.write_epub(output_path, book)
-    print(f'\nSaved: {output_path} (edition date: {today_str})')
+    print(f'\nSaved EPUB: {output_path}')
+
+    # ── Build HTML reader ──
+    html_path = output_path.replace('.epub', '.html')
+    html_content = build_html_reader(feeds, today_str, article_bodies,
+                                     fallback_notice=fallback_notice)
+    with open(html_path, 'w', encoding='utf-8') as f:
+        f.write(html_content)
+    print(f'Saved HTML reader: {html_path}')
+    print(f'\nEdition date: {today_str}')
