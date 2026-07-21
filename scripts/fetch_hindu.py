@@ -814,12 +814,18 @@ html, body {{
   overflow-y: auto; overflow-x: hidden;
   -webkit-overflow-scrolling: touch;
   transform: translateX(100%);
-  transition: transform 0.32s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  transition: transform 0.35s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+              filter 0.35s ease;
   will-change: transform;
   z-index: 101;
   padding: 1.5rem 1.1rem 3rem;
   max-width: 780px;
   margin: 0 auto;
+}}
+#article-pane.peeking {{
+  filter: blur(3px) brightness(0.7);
+  overflow: hidden;
+  pointer-events: none;
 }}
 #article-pane::-webkit-scrollbar {{ width: 3px; }}
 #article-pane::-webkit-scrollbar-thumb {{ background: var(--rule); }}
@@ -887,6 +893,18 @@ html, body {{
   transition: opacity 0.32s cubic-bezier(0.25, 0.46, 0.45, 0.94);
 }}
 
+/* ── Peek overlay — the visible sliver when pane is shelved ── */
+#peek-overlay {{
+  position: fixed;
+  top: 52px; right: 0; bottom: 0;
+  width: 8%;
+  z-index: 102;
+  cursor: pointer;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.35s ease;
+}}
+
 /* ── Fallback notice ── */
 .fallback-notice {{
   font-family: var(--font-ui); font-size: 0.75rem;
@@ -942,7 +960,7 @@ html, body {{
 <body>
 
 <header id="masthead">
-  <button class="back-btn" id="back-btn" onclick="closeArticle()" aria-label="Back to section">
+  <button class="back-btn" id="back-btn" onclick="dismissArticle()" aria-label="Back to section">
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none"
          stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
       <polyline points="15 18 9 12 15 6"/>
@@ -979,6 +997,8 @@ html, body {{
 </div>
 
 <div id="blur-overlay" onclick="closeArticle()"></div>
+
+<div id="peek-overlay" onclick="openArticlePeek()"></div>
 
 <div id="article-pane" aria-label="Article reader">
   <div class="art-pane-section" id="pane-section"></div>
@@ -1091,9 +1111,12 @@ function openArticle(aid) {{
     : '';
 
   pane.scrollTop = 0;
+  pane.classList.remove('peeking');
   pane.style.transform = 'translateX(0)';
   document.getElementById('blur-overlay').style.opacity = '1';
   document.getElementById('blur-overlay').style.pointerEvents = 'auto';
+  document.getElementById('peek-overlay').style.opacity = '0';
+  document.getElementById('peek-overlay').style.pointerEvents = 'none';
   articlePaneOpen = true;
   backBtn.style.display = 'flex';
   document.getElementById('section-nav').style.opacity = '0.4';
@@ -1101,10 +1124,39 @@ function openArticle(aid) {{
   history.pushState({{ article: aid }}, '');
 }}
 
+function openArticlePeek() {{
+  pane.classList.remove('peeking');
+  pane.style.transform = 'translateX(0)';
+  document.getElementById('blur-overlay').style.opacity = '1';
+  document.getElementById('blur-overlay').style.pointerEvents = 'auto';
+  document.getElementById('peek-overlay').style.opacity = '0';
+  document.getElementById('peek-overlay').style.pointerEvents = 'none';
+  articlePaneOpen = true;
+  backBtn.style.display = 'flex';
+  document.getElementById('section-nav').style.opacity = '0.4';
+  document.getElementById('section-nav').style.pointerEvents = 'none';
+}}
+
 function closeArticle() {{
+  pane.classList.add('peeking');
+  pane.style.transform = 'translateX(92%)';
+  document.getElementById('blur-overlay').style.opacity = '0';
+  document.getElementById('blur-overlay').style.pointerEvents = 'none';
+  document.getElementById('peek-overlay').style.opacity = '1';
+  document.getElementById('peek-overlay').style.pointerEvents = 'auto';
+  articlePaneOpen = false;
+  backBtn.style.display = 'none';
+  document.getElementById('section-nav').style.opacity = '';
+  document.getElementById('section-nav').style.pointerEvents = '';
+}}
+
+function dismissArticle() {{
+  pane.classList.remove('peeking');
   pane.style.transform = 'translateX(100%)';
   document.getElementById('blur-overlay').style.opacity = '0';
   document.getElementById('blur-overlay').style.pointerEvents = 'none';
+  document.getElementById('peek-overlay').style.opacity = '0';
+  document.getElementById('peek-overlay').style.pointerEvents = 'none';
   articlePaneOpen = false;
   backBtn.style.display = 'none';
   document.getElementById('section-nav').style.opacity = '';
@@ -1112,7 +1164,7 @@ function closeArticle() {{
 }}
 
 window.addEventListener('popstate', () => {{
-  if (articlePaneOpen) closeArticle();
+  dismissArticle();
 }});
 
 // Touch swipe on pages viewport
@@ -1145,10 +1197,8 @@ viewport.addEventListener('touchend', e => {{
 
 // Keyboard navigation
 document.addEventListener('keydown', e => {{
-  if (articlePaneOpen) {{
-    if (e.key === 'Escape') closeArticle();
-    return;
-  }}
+  if (e.key === 'Escape') {{ dismissArticle(); return; }}
+  if (articlePaneOpen) return;
   if (e.key === 'ArrowRight' && currentSection < SECTIONS.length - 1) goToSection(currentSection + 1);
   if (e.key === 'ArrowLeft' && currentSection > 0) goToSection(currentSection - 1);
 }});
