@@ -8,12 +8,20 @@
     body { font-family: Georgia, serif; max-width: 640px; margin: 3em auto; padding: 0 1.5em; color: #222; }
     h1 { font-size: 1.6em; border-bottom: 1px solid #ddd; padding-bottom: 0.4em; }
     h1 span { font-size: 0.55em; color: #555; font-weight: normal; display: block; margin-top: 0.2em; }
+    .btn-row { display: flex; gap: 0.75em; flex-wrap: wrap; margin: 1.5em 0 0.5em; }
     .download-btn {
-      display: inline-block; margin: 1.5em 0 0.5em;
+      display: inline-block;
       padding: 0.7em 1.6em; background: #c0392b; color: #fff;
       text-decoration: none; border-radius: 4px; font-size: 1em;
     }
     .download-btn:hover { background: #a93226; }
+    .read-btn {
+      display: inline-block;
+      padding: 0.7em 1.6em; background: #fff; color: #c0392b;
+      text-decoration: none; border-radius: 4px; font-size: 1em;
+      border: 2px solid #c0392b;
+    }
+    .read-btn:hover { background: #fdf0ef; }
     p.note { font-size: 0.85em; color: #555; margin-top: 0.4em; }
     hr { border: none; border-top: 1px solid #ddd; margin: 2em 0; }
     a.back { font-size: 0.9em; color: #555; text-decoration: none; }
@@ -25,15 +33,19 @@
   <h1>The Hindu — Delhi Edition
     <span>Updated daily at 07:00 IST</span>
   </h1>
-  <p class="note">Last updated: <strong>21 Jul 2026</strong></p>
-
-  <a class="download-btn"
-     href="https://BRDSLYR.github.io/NewsGet/hindu-delhi/hindu-delhi-latest.epub"
-     download="The Hindu - Delhi - 21 Jul 2026.epub">
-    Download Today's Edition
-  </a>
-
+  <p class="note">Last updated: <strong>{{LAST_UPDATED}}</strong></p>
+  <div class="btn-row">
+    <a class="download-btn"
+       href="https://BRDSLYR.github.io/NewsGet/hindu-delhi/hindu-delhi-latest.epub"
+       download="The Hindu - Delhi - {{LAST_UPDATED}}.epub">
+      Download EPUB
+    </a>
+    <a class="read-btn"
+       href="https://BRDSLYR.github.io/NewsGet/hindu-delhi/hindu-delhi-latest.html">
+      Read Online
+    </a>
+  </div>
   <hr/>
-  <p class="note">To read on iPhone: tap the link above, then tap <strong>Share → Copy to Books</strong> (or open in your preferred EPUB reader).</p>
+  <p class="note">To read on iPhone: tap <strong>Download EPUB</strong>, then tap <strong>Share → Copy to Books</strong> (or open in your preferred EPUB reader).</p>
 </body>
 </html>
