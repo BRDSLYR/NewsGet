@@ -612,11 +612,11 @@ html.dark .theme-btn::after{{transform:translateX(16px);background:var(--ink)}}
 #blur-overlay{{position:fixed;top:0;left:0;right:0;bottom:0;z-index:49;backdrop-filter:blur(6px) brightness(0.85);-webkit-backdrop-filter:blur(6px) brightness(0.85);opacity:0;pointer-events:none;transition:opacity 0.32s cubic-bezier(.25,.46,.45,.94)}}
 
 /* ── Article pane ── */
-@keyframes fl-to-pip{{0%{{opacity:1;transform:translate(0,0) scale(1);border-radius:0}}100%{{opacity:0;transform:translate(calc(100vw - 320px),calc(100vh - 230px)) scale(0.16);border-radius:10px}}}}
-@keyframes fl-from-pip{{0%{{opacity:0;transform:translate(calc(100vw - 320px),calc(100vh - 230px)) scale(0.16);border-radius:10px}}100%{{opacity:1;transform:translate(0,0) scale(1);border-radius:0}}}}
-#art-pane{{position:fixed;top:54px;left:0;right:0;bottom:0;background:var(--bg);overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch;opacity:0;pointer-events:none;transform-origin:bottom right;z-index:50;transition:background 0.25s}}
+@keyframes fl-to-pip{{0%{{opacity:1;transform:translateX(-50%) scale(1)}}100%{{opacity:0;transform:translateX(-50%) translate(calc(50vw - 150px),calc(50vh)) scale(0.18);border-radius:10px}}}}
+@keyframes fl-from-pip{{0%{{opacity:0;transform:translateX(-50%) translate(calc(50vw - 150px),calc(50vh)) scale(0.18);border-radius:10px}}100%{{opacity:1;transform:translateX(-50%) scale(1)}}}}
+#art-pane{{position:fixed;top:74px;left:50%;bottom:24px;transform:translateX(-50%) scale(0.96);width:min(680px,calc(100vw - 2rem));background:var(--bg);border-radius:12px;overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch;opacity:0;pointer-events:none;transform-origin:center bottom;z-index:50;transition:opacity 0.28s ease,transform 0.28s cubic-bezier(0.25,0.46,0.45,0.94),background 0.25s}}
 #art-pane::-webkit-scrollbar{{width:3px}}
-#art-pane::-webkit-scrollbar-thumb{{background:var(--border)}}#art-pane.open{{opacity:1;pointer-events:auto;animation:none;transform:none}}#art-pane.flying-out{{pointer-events:none;animation:fl-to-pip 0.75s cubic-bezier(0.4,0,0.2,1) forwards}}#art-pane.flying-in{{pointer-events:none;animation:fl-from-pip 0.4s cubic-bezier(0.2,0,0,1) forwards}}
+#art-pane::-webkit-scrollbar-thumb{{background:var(--border)}}#art-pane.open{{opacity:1;pointer-events:auto;animation:none;transform:translateX(-50%) scale(1)}}#art-pane.flying-out{{pointer-events:none;animation:fl-to-pip 0.75s cubic-bezier(0.4,0,0.2,1) forwards}}#art-pane.flying-in{{pointer-events:none;animation:fl-from-pip 0.4s cubic-bezier(0.2,0,0,1) forwards}}
 #pip-card{{position:fixed;bottom:20px;right:20px;width:260px;background:var(--surface);border-radius:10px;border:1px solid var(--border);overflow:hidden;opacity:0;pointer-events:none;transform:scale(0.88) translateY(8px);transform-origin:bottom right;transition:opacity 0.3s ease 0.52s,transform 0.35s cubic-bezier(0.34,1.4,0.64,1) 0.52s;z-index:103;cursor:pointer;box-shadow:0 4px 24px rgba(0,0,0,0.18)}}
 #pip-card.open{{opacity:1;pointer-events:auto;transform:scale(1) translateY(0)}}
 #pip-card:hover{{border-color:var(--muted)}}
@@ -681,7 +681,7 @@ html.dark .theme-btn::after{{transform:translateX(16px);background:var(--ink)}}
   <div class="pip-bd"><div class="pip-sec" id="pip-sec"></div><div class="pip-ttl" id="pip-ttl"></div><div class="pip-hint">Tap to continue reading</div></div>
 </div>
 
-<div id="art-pane">
+<div id="art-pane" onclick="event.stopPropagation()">
   <div class="pane-inner">
     <div class="pane-eyebrow" id="pane-eyebrow"></div>
     <div id="pane-title"></div>
