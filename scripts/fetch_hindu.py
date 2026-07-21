@@ -813,6 +813,16 @@ html, body {{
   text-align: right;
 }}
 
+/* ── Article pane fly animations ── */
+@keyframes fly-to-pip {{
+  0%   {{ opacity: 1; transform: translate(0,0) scale(1); border-radius: 0; }}
+  100% {{ opacity: 0; transform: translate(calc(100vw - 320px), calc(100vh - 230px)) scale(0.16); border-radius: 10px; }}
+}}
+@keyframes fly-from-pip {{
+  0%   {{ opacity: 0; transform: translate(calc(100vw - 320px), calc(100vh - 230px)) scale(0.16); border-radius: 10px; }}
+  100% {{ opacity: 1; transform: translate(0,0) scale(1); border-radius: 0; }}
+}}
+
 /* ── Article pane ── */
 #article-pane {{
   position: fixed;
@@ -820,14 +830,17 @@ html, body {{
   background: var(--paper);
   overflow-y: auto; overflow-x: hidden;
   -webkit-overflow-scrolling: touch;
-  transform: translateX(100%);
-  transition: transform 0.32s cubic-bezier(0.25, 0.46, 0.45, 0.94);
-  will-change: transform;
+  opacity: 0;
+  pointer-events: none;
+  transform-origin: bottom right;
   z-index: 101;
   padding: 1.5rem 1.1rem 3rem;
   max-width: 780px;
   margin: 0 auto;
 }}
+#article-pane.open {{ opacity: 1; pointer-events: auto; animation: none; transform: none; }}
+#article-pane.flying-out {{ pointer-events: none; animation: fly-to-pip 0.75s cubic-bezier(0.4,0,0.2,1) forwards; }}
+#article-pane.flying-in  {{ pointer-events: none; animation: fly-from-pip 0.4s cubic-bezier(0.2,0,0,1) forwards; }}
 #article-pane::-webkit-scrollbar {{ width: 3px; }}
 #article-pane::-webkit-scrollbar-thumb {{ background: var(--rule); }}
 
@@ -891,9 +904,54 @@ html, body {{
   -webkit-backdrop-filter: blur(6px) brightness(0.85);
   opacity: 0;
   pointer-events: none;
-  transition: opacity 0.32s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  transition: opacity 0.35s ease;
 }}
 
+
+/* ── PiP card ── */
+#pip-card {{
+  position: fixed;
+  bottom: 20px; right: 20px;
+  width: 260px;
+  background: var(--paper);
+  border-radius: 10px;
+  border: 1px solid var(--rule);
+  overflow: hidden;
+  opacity: 0;
+  pointer-events: none;
+  transform: scale(0.88) translateY(8px);
+  transform-origin: bottom right;
+  transition: opacity 0.3s ease 0.52s, transform 0.35s cubic-bezier(0.34,1.4,0.64,1) 0.52s;
+  z-index: 103;
+  cursor: pointer;
+  box-shadow: 0 4px 24px rgba(0,0,0,0.18);
+}}
+#pip-card.open {{ opacity: 1; pointer-events: auto; transform: scale(1) translateY(0); }}
+#pip-card:hover {{ border-color: var(--ink-muted); }}
+.pip-head {{
+  background: var(--ink); padding: 7px 10px;
+  display: flex; align-items: center; justify-content: space-between;
+}}
+.pip-logo {{ font-family: var(--font-head); font-size: 0.75rem; font-weight: 700; color: var(--paper); }}
+.pip-close {{
+  background: none; border: none; color: #aaa; cursor: pointer;
+  padding: 2px; display: flex; align-items: center; border-radius: 3px;
+  transition: color 0.15s;
+}}
+.pip-close:hover {{ color: var(--paper); }}
+.pip-body {{ padding: 10px 12px 12px; }}
+.pip-sec {{
+  font-family: var(--font-ui); font-size: 0.58rem; font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.08em;
+  color: var(--red); margin-bottom: 4px;
+}}
+.pip-title {{
+  font-family: var(--font-head); font-size: 0.8rem; font-weight: 700;
+  line-height: 1.3; color: var(--ink);
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+  margin-bottom: 5px;
+}}
+.pip-hint {{ font-family: var(--font-ui); font-size: 0.62rem; color: var(--ink-faint); }}
 
 /* ── Fallback notice ── */
 .fallback-notice {{
@@ -934,6 +992,7 @@ html, body {{
   #article-pane {{
     left: 0; right: 0;
     padding: 2rem 2.5rem 4rem;
+    max-width: 100%;
   }}
   .article-row {{
     grid-template-columns: 1fr;
@@ -950,7 +1009,7 @@ html, body {{
 <body>
 
 <header id="masthead">
-  <button class="back-btn" id="back-btn" onclick="closeArticle()" aria-label="Back to section">
+  <button class="back-btn" id="back-btn" onclick="closeArticle(event)" aria-label="Back to section">
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none"
          stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
       <polyline points="15 18 9 12 15 6"/>
@@ -986,8 +1045,23 @@ html, body {{
   <div id="pages-track" id="pages-track"></div>
 </div>
 
-<div id="blur-overlay" onclick="closeArticle()"></div>
+<div id="blur-overlay" onclick="pipArticle()"></div>
 
+<div id="pip-card" onclick="restoreArticle()">
+  <div class="pip-head">
+    <span class="pip-logo">The Hindu</span>
+    <button class="pip-close" onclick="closeArticle(event)" aria-label="Close article">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+        <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+      </svg>
+    </button>
+  </div>
+  <div class="pip-body">
+    <div class="pip-sec" id="pip-sec"></div>
+    <div class="pip-title" id="pip-title"></div>
+    <div class="pip-hint">Tap to continue reading</div>
+  </div>
+</div>
 
 <div id="article-pane" aria-label="Article reader">
   <div class="art-pane-section" id="pane-section"></div>
@@ -1100,7 +1174,9 @@ function openArticle(aid) {{
     : '';
 
   pane.scrollTop = 0;
-  pane.style.transform = 'translateX(0)';
+  pane.classList.remove('flying-out', 'flying-in');
+  pane.classList.add('open');
+  document.getElementById('pip-card').classList.remove('open');
   document.getElementById('blur-overlay').style.opacity = '1';
   document.getElementById('blur-overlay').style.pointerEvents = 'auto';
   articlePaneOpen = true;
@@ -1110,8 +1186,48 @@ function openArticle(aid) {{
   history.pushState({{ article: aid }}, '');
 }}
 
-function closeArticle() {{
-  pane.style.transform = 'translateX(100%)';
+function pipArticle() {{
+  if (!articlePaneOpen) return;
+  const sec  = document.getElementById('pane-section').textContent;
+  const titl = document.getElementById('pane-title').textContent;
+  document.getElementById('pip-sec').textContent   = sec;
+  document.getElementById('pip-title').textContent = titl;
+  pane.classList.remove('open');
+  pane.classList.add('flying-out');
+  pane.addEventListener('animationend', () => {{
+    pane.classList.remove('flying-out');
+  }}, {{ once: true }});
+  document.getElementById('blur-overlay').style.opacity = '0';
+  document.getElementById('blur-overlay').style.pointerEvents = 'none';
+  document.getElementById('pip-card').classList.add('open');
+  articlePaneOpen = false;
+  backBtn.style.display = 'none';
+  document.getElementById('section-nav').style.opacity = '';
+  document.getElementById('section-nav').style.pointerEvents = '';
+}}
+
+function restoreArticle() {{
+  document.getElementById('pip-card').classList.remove('open');
+  pane.classList.remove('open');
+  pane.classList.add('flying-in');
+  pane.addEventListener('animationend', () => {{
+    pane.classList.remove('flying-in');
+    pane.classList.add('open');
+  }}, {{ once: true }});
+  setTimeout(() => {{
+    document.getElementById('blur-overlay').style.opacity = '1';
+    document.getElementById('blur-overlay').style.pointerEvents = 'auto';
+  }}, 100);
+  articlePaneOpen = true;
+  backBtn.style.display = 'flex';
+  document.getElementById('section-nav').style.opacity = '0.4';
+  document.getElementById('section-nav').style.pointerEvents = 'none';
+}}
+
+function closeArticle(e) {{
+  if (e && e.stopPropagation) e.stopPropagation();
+  pane.classList.remove('open', 'flying-out', 'flying-in');
+  document.getElementById('pip-card').classList.remove('open');
   document.getElementById('blur-overlay').style.opacity = '0';
   document.getElementById('blur-overlay').style.pointerEvents = 'none';
   articlePaneOpen = false;
@@ -1121,7 +1237,8 @@ function closeArticle() {{
 }}
 
 window.addEventListener('popstate', () => {{
-  if (articlePaneOpen) closeArticle();
+  if (articlePaneOpen) pipArticle();
+  else closeArticle();
 }});
 
 // Touch swipe on pages viewport
@@ -1154,7 +1271,7 @@ viewport.addEventListener('touchend', e => {{
 
 // Keyboard navigation
 document.addEventListener('keydown', e => {{
-  if (articlePaneOpen && e.key === 'Escape') {{ closeArticle(); return; }}
+  if (e.key === 'Escape') {{ if (articlePaneOpen) pipArticle(); else closeArticle(); return; }}
   if (e.key === 'ArrowRight' && currentSection < SECTIONS.length - 1) goToSection(currentSection + 1);
   if (e.key === 'ArrowLeft' && currentSection > 0) goToSection(currentSection - 1);
 }});
