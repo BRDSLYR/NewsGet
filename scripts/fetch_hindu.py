@@ -371,17 +371,23 @@ def fetch_cover(cover_url):
         return None, None, None
 
 
-def fetch_and_embed_images(article, book, chapter_id):
-    """Download every image in the article and embed it into the EPUB."""
-    img_counter = 0
-    for img in article.find_all('img'):
-        # Resolve the real src: prefer data-original (lazy-load), then src
+import base64 as _base64
+
+def _download_images(article):
+    """Download all images in an article BeautifulSoup tag once.
+
+    Returns a list of (img_tag, src_url, raw_bytes, content_type) for every
+    image that was successfully fetched, with the img tag already cleaned of
+    lazy-load attributes.  Images that fail to download are decomposed from
+    the tree and excluded from the list.
+    """
+    results = []
+    for img in list(article.find_all('img')):
         src = img.get('data-original') or img.get('src') or ''
         if not src:
             img.decompose()
             continue
         src = absurl(src)
-        # Skip placeholder/spacer images
         if 'placeholder' in src or 'spacer' in src or src.endswith('.gif'):
             img.decompose()
             continue
@@ -391,28 +397,23 @@ def fetch_and_embed_images(article, book, chapter_id):
             content_type = resp.headers.get('Content-Type', 'image/jpeg').split(';')[0].strip()
             if content_type not in ('image/jpeg', 'image/png', 'image/gif', 'image/webp'):
                 content_type = 'image/jpeg'
-            ext = content_type.split('/')[-1].replace('jpeg', 'jpg')
-            img_counter += 1
-            img_filename = f'images/ch{chapter_id:04d}_{img_counter:03d}.{ext}'
-            img_item = epub.EpubItem(
-                uid=f'img-{chapter_id}-{img_counter}',
-                file_name=img_filename,
-                media_type=content_type,
-                content=resp.content,
-            )
-            book.add_item(img_item)
-            # Rewrite src to local embedded path
-            img['src'] = f'../{img_filename}'
-            # Clean up attrs that EPUB readers don't need
             for attr in ['data-original', 'data-src', 'srcset', 'height', 'width']:
                 if img.has_attr(attr):
                     del img[attr]
+            results.append((img, src, resp.content, content_type))
         except Exception as e:
-            print(f'    Warning: could not embed image {src}: {e}')
+            print(f'    Warning: could not download image {src}: {e}')
             img.decompose()
+    return results
 
 
 def fetch_article_content(url, book, chapter_id):
+    """Fetch an article and return (epub_body_html, html_body_html).
+
+    epub_body_html  — images rewritten to EPUB-internal paths (for ebooklib).
+    html_body_html  — images inlined as base64 data URIs (for self-contained HTML).
+    Both are derived from a single network fetch of each image.
+    """
     try:
         resp = requests.get(url, headers=HEADERS, timeout=30)
         resp.raise_for_status()
@@ -420,7 +421,8 @@ def fetch_article_content(url, book, chapter_id):
 
         article = soup.find(class_='article-section')
         if not article:
-            return '<p><em>Content not available.</em></p>'
+            stub = '<p><em>Content not available.</em></p>'
+            return stub, stub
 
         for cls in ['hide-mobile', 'comments-shares', 'share-page', 'editiondetails']:
             for el in article.find_all(class_=cls):
@@ -429,13 +431,41 @@ def fetch_article_content(url, book, chapter_id):
         for p in article.find_all('p', class_='caption'):
             p.name = 'figcaption'
 
-        # Embed all images into the EPUB (replaces the old data-original fix)
-        fetch_and_embed_images(article, book, chapter_id)
+        # Download every image once; get back (img_tag, src, bytes, mime)
+        image_data = _download_images(article)
 
-        return sanitize(article.decode_contents())
+        # ── Build EPUB version: rewrite src to EPUB-internal path ──
+        img_counter = 0
+        for img, src, raw, content_type in image_data:
+            img_counter += 1
+            ext = content_type.split('/')[-1].replace('jpeg', 'jpg')
+            img_filename = f'images/ch{chapter_id:04d}_{img_counter:03d}.{ext}'
+            book.add_item(epub.EpubItem(
+                uid=f'img-{chapter_id}-{img_counter}',
+                file_name=img_filename,
+                media_type=content_type,
+                content=raw,
+            ))
+            img['src'] = f'../{img_filename}'
+
+        epub_body = sanitize(article.decode_contents())
+
+        # ── Build HTML version: rewrite src to base64 data URI ──
+        # Restore the downloaded images onto the same tags (src was just set
+        # to the EPUB path above; overwrite it with the data URI now).
+        img_counter = 0
+        for img, src, raw, content_type in image_data:
+            img_counter += 1
+            b64 = _base64.b64encode(raw).decode('ascii')
+            img['src'] = f'data:{content_type};base64,{b64}'
+
+        html_body = sanitize(article.decode_contents())
+
+        return epub_body, html_body
 
     except Exception as e:
-        return f'<p><em>Failed to fetch article: {html.escape(str(e))}</em></p>'
+        stub = f'<p><em>Failed to fetch article: {html.escape(str(e))}</em></p>'
+        return stub, stub
 
 
 def build_epub(feeds, today_str, cover_url, edition='delhi', fallback_notice='',
@@ -511,7 +541,7 @@ def build_epub(feeds, today_str, cover_url, edition='delhi', fallback_notice='',
                     '<p><em>Content not available.</em></p>'
                 )
             else:
-                body = fetch_article_content(article['url'], book, chapter_id)
+                body, _ = fetch_article_content(article['url'], book, chapter_id)
 
             ch = epub.EpubHtml(
                 title=article['title'],
@@ -828,6 +858,18 @@ html, body {{
 }}
 #article-pane .art-source-link a {{ color: var(--red); }}
 
+/* ── Background blur overlay ── */
+#blur-overlay {{
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  z-index: 49;
+  backdrop-filter: blur(6px) brightness(0.85);
+  -webkit-backdrop-filter: blur(6px) brightness(0.85);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.32s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+}}
+
 /* ── Fallback notice ── */
 .fallback-notice {{
   font-family: var(--font-ui); font-size: 0.75rem;
@@ -889,6 +931,8 @@ html, body {{
 <div id="pages-viewport">
   <div id="pages-track" id="pages-track"></div>
 </div>
+
+<div id="blur-overlay"></div>
 
 <div id="article-pane" aria-label="Article reader">
   <div class="art-pane-section" id="pane-section"></div>
@@ -990,6 +1034,7 @@ function openArticle(aid) {{
 
   pane.scrollTop = 0;
   pane.style.transform = 'translateX(0)';
+  document.getElementById('blur-overlay').style.opacity = '1';
   articlePaneOpen = true;
   backBtn.style.display = 'flex';
   document.getElementById('section-nav').style.opacity = '0.4';
@@ -999,6 +1044,7 @@ function openArticle(aid) {{
 
 function closeArticle() {{
   pane.style.transform = 'translateX(100%)';
+  document.getElementById('blur-overlay').style.opacity = '0';
   articlePaneOpen = false;
   backBtn.style.display = 'none';
   document.getElementById('section-nav').style.opacity = '';
@@ -1080,22 +1126,25 @@ if __name__ == '__main__':
         print(f'RSS fallback active — notice: {fallback_notice}')
 
     # ── Fetch all article bodies once; share between EPUB and HTML reader ──
-    # We build a temporary EpubBook just to pass to fetch_article_content
-    # (it embeds images into the book object). The HTML reader gets plain HTML.
+    # fetch_article_content now returns (epub_body, html_body):
+    #   epub_body  — images as EPUB-internal paths  (for ebooklib)
+    #   html_body  — images as base64 data URIs     (for self-contained HTML)
     print('\nFetching article content...')
     temp_book = epub.EpubBook()
-    article_bodies = {}   # url -> body HTML (for HTML reader)
+    epub_bodies = {}   # url -> epub body HTML
+    html_bodies = {}   # url -> html body HTML (images as data URIs)
     chapter_id = 0
     for section, articles in feeds.items():
         for art in articles:
             chapter_id += 1
-            body = fetch_article_content(art['url'], temp_book, chapter_id)
-            article_bodies[art['url']] = body
+            epub_body, html_body = fetch_article_content(art['url'], temp_book, chapter_id)
+            epub_bodies[art['url']] = epub_body
+            html_bodies[art['url']] = html_body
 
     # ── Build EPUB ──
     book = build_epub(feeds, today_str, cover_url, edition,
                       fallback_notice=fallback_notice,
-                      prefetched_bodies=article_bodies,
+                      prefetched_bodies=epub_bodies,
                       prefetched_book=temp_book)
 
     output_path = sys.argv[2] if len(sys.argv) > 2 else \
@@ -1105,7 +1154,7 @@ if __name__ == '__main__':
 
     # ── Build HTML reader ──
     html_path = output_path.replace('.epub', '.html')
-    html_content = build_html_reader(feeds, today_str, article_bodies,
+    html_content = build_html_reader(feeds, today_str, html_bodies,
                                      fallback_notice=fallback_notice)
     with open(html_path, 'w', encoding='utf-8') as f:
         f.write(html_content)
