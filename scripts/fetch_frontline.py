@@ -640,6 +640,8 @@ html.dark .theme-btn::after{{transform:translateX(16px);background:var(--ink)}}
 .pane-body figcaption{{font-size:0.75rem;color:var(--muted);margin-top:-0.5rem;margin-bottom:1rem;font-style:italic;text-align:center}}
 .pane-src{{margin-top:1.5rem;padding-top:1rem;border-top:1px solid var(--border);font-family:var(--fu);font-size:0.7rem;color:var(--muted)}}
 .pane-src a{{color:var(--teal)}}
+.print-btn{{display:inline-flex;align-items:center;gap:6px;margin-top:1rem;background:none;border:1px solid var(--border);border-radius:6px;padding:6px 14px;font-family:var(--fu);font-size:0.75rem;color:var(--muted);cursor:pointer;transition:border-color 0.15s,color 0.15s}}.print-btn:hover{{border-color:var(--muted);color:var(--ink)}}.print-btn svg{{flex-shrink:0}}
+@media print{{body,html{{overflow:visible!important;background:#fff!important}}#hdr,#toc-view,#blur-overlay,#pip-card,.print-btn{{display:none!important}}#art-pane{{position:static!important;transform:none!important;opacity:1!important;pointer-events:auto!important;width:100%!important;max-width:100%!important;height:auto!important;overflow:visible!important;border-radius:0!important;padding:2rem!important;background:#fff!important;color:#000!important;box-shadow:none!important}}.pane-eyebrow,#pane-title,.pane-desc,.pane-body,.pane-src{{display:block!important;color:#000!important}}.pane-body img{{max-width:100%!important}}a{{color:#000!important;text-decoration:none!important}}}}
 
 @media(min-width:700px){{
   .pane-inner{{padding:2rem 2.5rem 4rem}}
@@ -688,6 +690,10 @@ html.dark .theme-btn::after{{transform:translateX(16px);background:var(--ink)}}
     <div class="pane-desc" id="pane-desc"></div>
     <div class="pane-body" id="pane-body"></div>
     <div class="pane-src" id="pane-src"></div>
+    <button class="print-btn" onclick="window.print()" aria-label="Save as PDF">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+      Save as PDF
+    </button>
   </div>
 </div>
 
