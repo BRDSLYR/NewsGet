@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Standalone script replicating the Calibre Frontline recipe.
-Fetches the current or specified issue of Frontline magazine and outputs an EPUB.
+Fetches the current or specified issue of Frontline magazine and outputs an EPUB and single-file HTML reader.
 Usage: python fetch_frontline.py [issue] [output_path]
   issue: optional, Volume-Issue format e.g. "41-12" (defaults to current issue)
 """
@@ -63,44 +63,21 @@ def sanitize(content):
 
 
 def issue_label_to_slug(issue_label):
-    """Convert Frontline's issue label to a canonical slug for filenames.
+    """Convert Frontline's issue label directly to a canonical slug.
 
     Frontline labels look like:
       "Volume 42, Issue 13 | June 20, 2025"
       "Volume 41, Issue 1 | January 6, 2024"
 
-    Returns: "2025-06-20-vol42-iss13"
-    This uniquely identifies an issue by both its publish date and its
-    volume/issue number, preventing duplicate downloads on re-runs.
-    Falls back to "YYYY-MM-DD-vol0-iss0" using today's date if parsing fails.
+    Returns: "volume-42-issue-13-june-20-2025"
+    Uniquely identifies an issue directly by its full issue title/label.
     """
-    try:
-        vol_m   = re.search(r'[Vv]olume\s+(\d+)', issue_label)
-        iss_m   = re.search(r'[Ii]ssue\s+(\d+)', issue_label)
-        date_part = issue_label.split('|')[-1].strip()
-        date_m  = re.search(r'([A-Za-z]+)\s+(\d{1,2}),?\s+(\d{4})', date_part)
-
-        vol = int(vol_m.group(1)) if vol_m else 0
-        iss = int(iss_m.group(1)) if iss_m else 0
-
-        if date_m:
-            month_name = date_m.group(1).lower()
-            day   = int(date_m.group(2))
-            year  = int(date_m.group(3))
-            month = _MONTHS.get(month_name[:3], 0)
-            if month:
-                return f'{year}-{month:02d}-{day:02d}-vol{vol}-iss{iss}'
-    except Exception:
-        pass
-    return f'{date.today().strftime("%Y-%m-%d")}-vol0-iss0'
-
-
-def slug_to_vol_iss(slug):
-    """Extract (vol, iss) integers from a slug like "2025-06-20-vol42-iss13"."""
-    m = re.search(r'vol(\d+)-iss(\d+)', slug)
-    if m:
-        return int(m.group(1)), int(m.group(2))
-    return None, None
+    if not issue_label:
+        return date.today().strftime('%Y-%m-%d')
+    
+    # Lowercase and replace non-alphanumeric character sequences with a single hyphen
+    slug = re.sub(r'[^a-z0-9]+', '-', issue_label.lower()).strip('-')
+    return slug or date.today().strftime('%Y-%m-%d')
 
 
 def make_xhtml(title, description, body, chapter_file):
@@ -497,16 +474,7 @@ def build_epub(feeds, issue_label, cover_url,
 
 def build_html_reader(feeds, issue_label, article_bodies,
                       cover_image_b64=None, cover_mime='image/jpeg'):
-    """Build a self-contained single-file HTML reader for a Frontline issue.
-
-    Layout: fixed header with issue title + dark/light toggle. Below it, a
-    scrollable table of contents grouped by section — each article is a card
-    showing title and description. Tapping a card slides in a full-screen
-    reading pane from the right. A blur overlay darkens the TOC behind it.
-
-    All article HTML and the cover image are embedded so the file is fully
-    self-contained.
-    """
+    """Build a self-contained single-file HTML reader for a Frontline issue."""
     cover_html = ''
     if cover_image_b64:
         cover_html = (
@@ -826,26 +794,22 @@ if __name__ == '__main__':
 
     feeds, issue_label, cover_url = fetch_article_list(issue)
     slug = issue_label_to_slug(issue_label)
-    vol, iss = slug_to_vol_iss(slug)
 
     print(f'\nIssue label : {issue_label}')
     print(f'Slug        : {slug}')
-    print(f'Volume/Issue: vol{vol} iss{iss}')
 
     # ── Duplicate detection ──────────────────────────────────────────────
-    # The workflow passes EXISTING_SLUG (the vol/iss of the last deployed
-    # issue) via an environment variable. If it matches, we exit cleanly
-    # so the workflow skips the deploy step entirely.
+    # Compares slug generated directly from the issue label against the
+    # environment variable EXISTING_SLUG.
     import os
-    existing_slug = os.environ.get('EXISTING_SLUG', '')
-    if existing_slug:
-        ex_vol, ex_iss = slug_to_vol_iss(existing_slug)
-        if ex_vol is not None and ex_vol == vol and ex_iss == iss:
-            print(f'\nSame issue already published ({existing_slug}). Nothing to do.')
-            # Signal to workflow that this is a duplicate
-            with open('DUPLICATE', 'w') as f:
-                f.write(existing_slug)
-            sys.exit(0)
+    existing_slug = os.environ.get('EXISTING_SLUG', '').strip().lower()
+
+    if existing_slug and existing_slug == slug:
+        print(f'\nSame issue already published ({issue_label}). Nothing to do.')
+        # Signal to workflow that this is a duplicate
+        with open('DUPLICATE', 'w') as f:
+            f.write(slug)
+        sys.exit(0)
 
     # ── Fetch all article bodies once ────────────────────────────────────
     print('\nFetching article content...')
